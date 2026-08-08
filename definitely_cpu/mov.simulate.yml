@@ -1,0 +1,18 @@
+simulate:
+  output-dir: ./build/sim-mov
+  program: ./tests/test_mov.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r10
+      value: 42
+    - register: r11
+      value: 17
+
+  options:
+    max-cycles: 20
+    trace: false
+
+  assembler: ./tools/asm.py
