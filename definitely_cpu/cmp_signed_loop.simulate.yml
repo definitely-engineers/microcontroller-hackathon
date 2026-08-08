@@ -1,0 +1,18 @@
+simulate:
+  output-dir: ./build/sim-cmp-signed-loop
+  program: ./tests/test_cmp_signed_loop.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r5
+      value: 4294967295
+    - register: r8
+      value: 4294967294
+
+  options:
+    max-cycles: 30
+    trace: false
+
+  assembler: ./tools/asm.py
