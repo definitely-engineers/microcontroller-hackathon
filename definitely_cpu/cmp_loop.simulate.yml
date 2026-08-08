@@ -1,0 +1,20 @@
+simulate:
+  output-dir: ./build/sim-cmp-loop
+  program: ./tests/test_cmp_loop.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r5
+      value: 0
+    - register: r8
+      value: 5
+    - register: r9
+      value: 5
+
+  options:
+    max-cycles: 30
+    trace: false
+
+  assembler: ./tools/asm.py
