@@ -18,6 +18,8 @@ module cpu (
     wire [`REG_ADDR_W-1:0] dest;
     wire is_add;
     wire is_li;
+    wire is_jmp;
+    wire jump_is_absolute;
     wire is_halt;
     wire [15:0] immediate16;
     wire reg_write_en;
@@ -29,15 +31,25 @@ module cpu (
     wire [`DATA_MSB:0] alu_b;
     wire [`DATA_MSB:0] alu_result;
     wire [`DATA_MSB:0] wb_data;
+    wire [`ADDR_MSB:0] relative_jump_target;
+    wire [`ADDR_MSB:0] jump_target;
 
     assign dbg_pc = pc;
     assign dbg_halt = is_halt;
     assign rf_write_en = reg_write_en && rst_n;
+    // PC and the branch offset are both 16 bits. Two's-complement addition
+    // therefore implements the ISA's signed PC-relative offset modulo 2^16.
+    assign relative_jump_target = pc + immediate16;
+    assign jump_target = jump_is_absolute ? immediate16 : relative_jump_target;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             pc <= `PC_INIT;
-        else if (!is_halt)
+        else if (is_halt)
+            pc <= pc;
+        else if (is_jmp)
+            pc <= jump_target;
+        else
             pc <= pc + 1'b1;
     end
 
@@ -57,6 +69,8 @@ module cpu (
         .dest(dest),
         .is_add(is_add),
         .is_li(is_li),
+        .is_jmp(is_jmp),
+        .jump_is_absolute(jump_is_absolute),
         .is_halt(is_halt),
         .immediate16(immediate16),
         .reg_write_en(reg_write_en)

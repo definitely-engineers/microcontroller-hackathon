@@ -12,6 +12,8 @@ module decoder (
     output wire [`REG_ADDR_W-1:0] dest,
     output wire                    is_add,
     output wire                    is_li,
+    output wire                    is_jmp,
+    output wire                    jump_is_absolute,
     output wire                    is_halt,
     output wire [15:0]             immediate16,
     output wire                    reg_write_en
@@ -34,8 +36,9 @@ module decoder (
     assign is_sub  = is_type1 && (t1_opcode == `OP_SUB);
     assign is_mov  = is_type1 && (t1_opcode == `OP_MOV);
     assign is_li   = !is_type1 && (t2_opcode == `OP_LI) && t2_ri;
-    assign is_halt = !is_type1 && (t2_opcode == `OP_JMP) &&
-                     !t2_ri && (immediate16 == 16'h0000);
+    assign is_jmp  = !is_type1 && (t2_opcode == `OP_JMP);
+    assign jump_is_absolute = is_jmp && t2_ri;
+    assign is_halt = is_jmp && !t2_ri && (immediate16 == 16'h0000);
     assign dest = is_li ? t2_reg : instr[4:0];
     assign reg_write_en = is_add || is_sub || is_mov || is_li;
 endmodule
