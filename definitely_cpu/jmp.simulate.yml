@@ -1,0 +1,18 @@
+simulate:
+  output-dir: ./build/sim-jmp
+  program: ./tests/test_jmp.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r8
+      value: 1
+    - register: r9
+      value: 7
+
+  options:
+    max-cycles: 20
+    trace: false
+
+  assembler: ./tools/asm.py
