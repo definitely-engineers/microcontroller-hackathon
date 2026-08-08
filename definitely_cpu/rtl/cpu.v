@@ -20,10 +20,16 @@ module cpu (
     wire is_li;
     wire is_jmp;
     wire jump_is_absolute;
+    wire is_call;
+    wire call_is_absolute;
+    wire is_ret;
     wire is_halt;
     wire [15:0] immediate16;
     wire reg_write_en;
     wire rf_write_en;
+    wire [`REG_ADDR_W-1:0] rf_write_addr;
+    wire [`REG_ADDR_W-1:0] rf_read_addr_a;
+    wire [`DATA_MSB:0] rf_write_data;
 
     wire [`DATA_MSB:0] rf_a;
     wire [`DATA_MSB:0] rf_b;
@@ -33,20 +39,33 @@ module cpu (
     wire [`DATA_MSB:0] wb_data;
     wire [`ADDR_MSB:0] relative_jump_target;
     wire [`ADDR_MSB:0] jump_target;
+    wire [`ADDR_MSB:0] call_target;
+    wire [`ADDR_MSB:0] return_address;
 
     assign dbg_pc = pc;
     assign dbg_halt = is_halt;
-    assign rf_write_en = reg_write_en && rst_n;
+    assign rf_write_en = (reg_write_en || is_call) && rst_n;
+    assign rf_write_addr = is_call ? `REG_ADDR_W'd3 : dest;
+    assign rf_read_addr_a = is_ret ? `REG_ADDR_W'd3 : arg1;
+    assign return_address = pc + 1'b1;
+    assign rf_write_data = is_call
+                         ? {{(`DATA_WIDTH-`ADDR_WIDTH){1'b0}}, return_address}
+                         : wb_data;
     // PC and the branch offset are both 16 bits. Two's-complement addition
     // therefore implements the ISA's signed PC-relative offset modulo 2^16.
     assign relative_jump_target = pc + immediate16;
     assign jump_target = jump_is_absolute ? immediate16 : relative_jump_target;
+    assign call_target = call_is_absolute ? immediate16 : relative_jump_target;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             pc <= `PC_INIT;
         else if (is_halt)
             pc <= pc;
+        else if (is_ret)
+            pc <= rf_a[`ADDR_MSB:0];
+        else if (is_call)
+            pc <= call_target;
         else if (is_jmp)
             pc <= jump_target;
         else
@@ -71,6 +90,9 @@ module cpu (
         .is_li(is_li),
         .is_jmp(is_jmp),
         .jump_is_absolute(jump_is_absolute),
+        .is_call(is_call),
+        .call_is_absolute(call_is_absolute),
+        .is_ret(is_ret),
         .is_halt(is_halt),
         .immediate16(immediate16),
         .reg_write_en(reg_write_en)
@@ -79,9 +101,9 @@ module cpu (
     regfile u_regfile (
         .clk(clk),
         .wr_en(rf_write_en),
-        .wr_addr(dest),
-        .wr_data(wb_data),
-        .rd_addr_a(arg1),
+        .wr_addr(rf_write_addr),
+        .wr_data(rf_write_data),
+        .rd_addr_a(rf_read_addr_a),
         .rd_addr_b(arg2),
         .rd_data_a(rf_a),
         .rd_data_b(rf_b)

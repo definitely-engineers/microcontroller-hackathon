@@ -1,0 +1,26 @@
+simulate:
+  output-dir: ./build/sim-call-ret
+  program: ./tests/test_call_ret.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r3
+      value: 4
+    - register: r8
+      value: 42
+    - register: r9
+      value: 7
+    - register: r10
+      value: 2
+    - register: r11
+      value: 17
+    - register: r12
+      value: 4
+
+  options:
+    max-cycles: 30
+    trace: false
+
+  assembler: ./tools/asm.py
