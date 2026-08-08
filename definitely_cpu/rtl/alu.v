@@ -11,6 +11,7 @@ module alu (
     always @(*) begin
         case (op)
             `OP_ADD: result = a + b;
+            `OP_SUB: result = a - b;
             default: result = {`DATA_WIDTH{1'b0}};
         endcase
     end

@@ -1,0 +1,18 @@
+simulate:
+  output-dir: ./build/sim-sub
+  program: ./tests/test_sub.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r10
+      value: 13
+    - register: r11
+      value: 16
+
+  options:
+    max-cycles: 20
+    trace: false
+
+  assembler: ./tools/asm.py

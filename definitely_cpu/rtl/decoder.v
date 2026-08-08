@@ -19,6 +19,7 @@ module decoder (
     wire [`T2_OPCODE_W-1:0] t2_opcode = instr[30:22];
     wire                     t2_ri     = instr[21];
     wire [`REG_ADDR_W-1:0]   t2_reg    = instr[20:16];
+    wire                     is_sub;
 
     assign is_type1   = instr[31];
     assign t1_opcode  = instr[30:17];
@@ -29,9 +30,10 @@ module decoder (
     assign immediate16 = instr[15:0];
 
     assign is_add  = is_type1 && (t1_opcode == `OP_ADD);
+    assign is_sub  = is_type1 && (t1_opcode == `OP_SUB);
     assign is_li   = !is_type1 && (t2_opcode == `OP_LI) && t2_ri;
     assign is_halt = !is_type1 && (t2_opcode == `OP_JMP) &&
                      !t2_ri && (immediate16 == 16'h0000);
     assign dest = is_li ? t2_reg : instr[4:0];
-    assign reg_write_en = is_add || is_li;
+    assign reg_write_en = is_add || is_sub || is_li;
 endmodule
