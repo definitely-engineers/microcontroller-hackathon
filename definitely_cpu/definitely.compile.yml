@@ -1,0 +1,45 @@
+# my_cpu.compile.yml
+# Compile C / assembly sources into your ISA's assembly and hex image.
+#
+# Usage:
+#   python3 ../scripts/compile.py my_cpu.compile.yml
+#
+# Paths are resolved relative to THIS file.
+
+compile:
+  output-dir: ./build/compile
+
+  compiler:
+    install-dir: /llvm-build  # use the locally rebuilt LLVM with your target
+    target: myisa             # your backend's -march name (lower-case)
+    misc:                     # extra clang flags (IR generation stage)
+      - -O1
+      # 容器里的 LLVM 只编了 X86 后端（重建后端时目标列表变成 X86;MYISA），
+      # clang 找不到宿主 arm64 的默认三元组，所以必须显式指定一个存在的。
+      # 用 i386 而不是 x86_64：它也是 32 位指针 + 小端，和我们的
+      # DataLayout "e-p:32:32-i32:32-n32-S32" 最接近。
+      # 这一步只是借它生成中间代码，真正的代码生成是 llc -march=myisa 做的。
+      - --target=i386-unknown-none-elf
+    codegen:                  # extra llc flags (code-generation stage)
+      - -O0
+    add-path: []              # additional C include search paths（暂无）
+
+  output:
+    asm:  true                # always emit a combined .asm file
+    hex:  true                # also assemble the .asm to a .hex memory image
+    name: program             # stem of the output filenames
+    assembler: ""             # path to your assembler (auto-detects tools/asm.py)
+
+  # Startup stub: prepended to the compiled output so the hex is standalone.
+  # _start initialises SP, loads any arguments into the argument registers,
+  # calls the entry function, then executes HALT.
+  startup:
+    entry: add                # 直接调 add()，不经过 main
+    args: [21, 21]            # 装进 r8 和 r9 → 期望返回 42 到 r8
+
+  # Source groups. C files are compiled to LLVM IR, linked with llvm-link,
+  # then lowered to your assembly via llc. ASM files are appended afterwards.
+  groups:
+    - group: Tests
+      files:
+        - file: ./tests/test_add.c
