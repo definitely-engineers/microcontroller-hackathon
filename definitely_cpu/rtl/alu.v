@@ -1,5 +1,6 @@
 `include "config.vh"
 `include "opcodes.vh"
+//Arithmetic Logic Unit，算术逻辑单元
 
 module alu (
     input  wire [`T1_OPCODE_W-1:0] op,
