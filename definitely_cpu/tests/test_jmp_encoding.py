@@ -49,6 +49,16 @@ class JmpEncodingTest(unittest.TestCase):
         )
         self.assertEqual(words[1], expected_jmp)
 
+    def test_absolute_address_sets_ri_bit(self):
+        words = assembler.assemble(["JMP #6\n"])
+        expected_jmp = isa_config.encode_type2(
+            isa_config.T2_OPS["JMP"],
+            1,
+            0,
+            6,
+        )
+        self.assertEqual(words[0], expected_jmp)
+
 
 if __name__ == "__main__":
     unittest.main()

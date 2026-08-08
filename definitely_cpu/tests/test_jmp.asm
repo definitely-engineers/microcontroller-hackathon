@@ -5,4 +5,6 @@ LI   r8, #99
 
 skip:
 LI   r9, #7
+JMP  #6
+LI   r9, #99
 HALT
