@@ -10,7 +10,7 @@
 `define INSTR_WIDTH 32
 `define REG_COUNT   32
 `define REG_ADDR_W  5
-`define IMEM_DEPTH  8792
+`define IMEM_DEPTH  8192
 `define DMEM_DEPTH  32768
 `define PC_INIT     16'h0000
 
