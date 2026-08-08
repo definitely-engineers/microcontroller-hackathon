@@ -18,7 +18,7 @@
 | `REG_COUNT` | 32 | Team decision / matches template |
 | `REG_ADDR_W` | 5 bits | Derived from 32 registers |
 | `ADDR_WIDTH` | 16 bits | Team decision / matches template assumptions |
-| `IMEM_DEPTH` | 8792 words | Team decision |
+| `IMEM_DEPTH` | 8192 words | Team decision |
 | `DMEM_DEPTH` | 32768 bytes | Team decision |
 | Memory architecture | Harvard | Team decision |
 | IMEM addressing | Word-addressed | Baseline decision |
@@ -38,7 +38,7 @@
 `define INSTR_WIDTH  32
 `define REG_COUNT    32
 `define REG_ADDR_W   5
-`define IMEM_DEPTH   8792
+`define IMEM_DEPTH   8192
 `define DMEM_DEPTH   32768
 `define PC_INIT      16'h0000
 ```
@@ -73,8 +73,8 @@ The baseline CPU may fetch an instruction and access data memory independently.
 - Addressing: **word-addressed**
 - One IMEM address selects one complete 32-bit instruction.
 - `PC` therefore advances by **1** for normal sequential execution.
-- Valid implemented IMEM indices: `0` through `8791`.
-- Capacity: `8792 × 32 bits = 35168 bytes` of instruction storage.
+- Valid implemented IMEM indices: `0` through `8191`.
+- Capacity: `8192 × 32 bits = 32768 bytes` of instruction storage.
 - Reset fetch address: `PC = 0x0000`.
 
 Normal flow:
