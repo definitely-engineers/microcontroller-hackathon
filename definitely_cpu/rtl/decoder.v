@@ -11,9 +11,15 @@ module decoder (
     output wire [`REG_ADDR_W-1:0] arg2,
     output wire [`REG_ADDR_W-1:0] dest,
     output wire                    is_add,
+    output wire                    is_cmp,
     output wire                    is_li,
     output wire                    is_jmp,
     output wire                    jump_is_absolute,
+    output wire                    is_jz,
+    output wire                    is_jnz,
+    output wire                    is_jlt,
+    output wire                    is_jgt,
+    output wire                    branch_is_absolute,
     output wire                    is_call,
     output wire                    call_is_absolute,
     output wire                    is_ret,
@@ -37,14 +43,21 @@ module decoder (
 
     assign is_add  = is_type1 && (t1_opcode == `OP_ADD);
     assign is_sub  = is_type1 && (t1_opcode == `OP_SUB);
+    assign is_cmp  = is_type1 && (t1_opcode == `OP_CMP);
     assign is_mov  = is_type1 && (t1_opcode == `OP_MOV);
     assign is_li   = !is_type1 && (t2_opcode == `OP_LI) && t2_ri;
     assign is_jmp  = !is_type1 && (t2_opcode == `OP_JMP);
     assign jump_is_absolute = is_jmp && t2_ri;
+    assign is_jz   = !is_type1 && (t2_opcode == `OP_JZ);
+    assign is_jnz  = !is_type1 && (t2_opcode == `OP_JNZ);
+    assign is_jlt  = !is_type1 && (t2_opcode == `OP_JLT);
+    assign is_jgt  = !is_type1 && (t2_opcode == `OP_JGT);
+    assign branch_is_absolute = t2_ri && (is_jz || is_jnz || is_jlt || is_jgt);
     assign is_call = !is_type1 && (t2_opcode == `OP_CALL);
     assign call_is_absolute = is_call && t2_ri;
     assign is_ret  = !is_type1 && (t2_opcode == `OP_RET);
     assign is_halt = is_jmp && !t2_ri && (immediate16 == 16'h0000);
-    assign dest = is_li ? t2_reg : instr[4:0];
-    assign reg_write_en = is_add || is_sub || is_mov || is_li;
+    assign dest = is_li ? t2_reg
+                        : (is_cmp ? `REG_ADDR_W'd5 : instr[4:0]);
+    assign reg_write_en = is_add || is_sub || is_cmp || is_mov || is_li;
 endmodule

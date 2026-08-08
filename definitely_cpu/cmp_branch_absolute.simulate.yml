@@ -1,0 +1,18 @@
+simulate:
+  output-dir: ./build/sim-cmp-branch-absolute
+  program: ./tests/test_cmp_branch_absolute.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r5
+      value: 1
+    - register: r16
+      value: 1
+
+  options:
+    max-cycles: 20
+    trace: false
+
+  assembler: ./tools/asm.py

@@ -430,6 +430,19 @@ JLT
 JGT
 ```
 
+Baseline comparison syntax and result encoding:
+
+```asm
+CMP r5, left, right
+```
+
+- `r5` is mandatory as the first operand; the assembler rejects any other
+  destination register.
+- Signed `left < right` writes `0xFFFFFFFF` (`-1`) to `r5`.
+- `left == right` writes `0` to `r5`.
+- Signed `left > right` writes `1` to `r5`.
+- `JZ`, `JNZ`, `JLT`, and `JGT` always read `r5`.
+
 The exact internal comparison-result encoding in `r5` must remain consistent between the RTL and compiler/backend implementation.
 
 ---
