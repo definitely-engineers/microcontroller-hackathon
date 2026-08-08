@@ -1,0 +1,15 @@
+# compiled.simulate.yml
+# 跑 compile.py 编译出来的程序（C 源码 → .hex），验证编译器和硬件对得上。
+# 和 add.simulate.yml 的区别只有 program 和 verify —— 那份跑的是手写汇编。
+simulate:
+  output-dir: ./build/sim-compiled
+  program: ./build/compile/program.hex
+  rtl:
+    dir: ./rtl
+  verify:
+    - register: r8
+      value: 42            # add(21, 21)，返回值按 ABI 放 r8
+  options:
+    max-cycles: 30
+    trace: false
+  assembler: ./tools/asm.py
