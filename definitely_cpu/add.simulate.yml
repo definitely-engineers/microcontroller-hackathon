@@ -1,0 +1,16 @@
+simulate:
+  output-dir: ./build/sim
+  program: ./tests/test_add.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r10
+      value: 42
+
+  options:
+    max-cycles: 20
+    trace: false
+
+  assembler: ./tools/asm.py
