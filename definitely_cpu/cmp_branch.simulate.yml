@@ -1,0 +1,28 @@
+simulate:
+  output-dir: ./build/sim-cmp-branch
+  program: ./tests/test_cmp_branch.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r5
+      value: 4294967295
+    - register: r10
+      value: 1
+    - register: r11
+      value: 1
+    - register: r12
+      value: 1
+    - register: r13
+      value: 1
+    - register: r14
+      value: 1
+    - register: r15
+      value: 1
+
+  options:
+    max-cycles: 50
+    trace: false
+
+  assembler: ./tools/asm.py
