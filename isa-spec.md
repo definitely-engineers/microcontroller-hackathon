@@ -534,27 +534,28 @@ Plus calling convention, callee-save handling, stack frames, and recursion.
 All of the following must agree with this file:
 
 ```text
-docs/isa-spec.md
+isa-spec.md
         |
-        +--> rtl/include/config.vh
-        +--> rtl/include/opcodes.vh
-        +--> rtl/decoder.v
-        +--> rtl/regfile.v
-        +--> rtl/alu.v
-        +--> rtl/imem.v
-        +--> rtl/dmem.v
+        +--> definitely_cpu/rtl/include/config.vh
+        +--> definitely_cpu/rtl/include/opcodes.vh
+        +--> definitely_cpu/rtl/decoder.v
+        +--> definitely_cpu/rtl/regfile.v
+        +--> definitely_cpu/rtl/alu.v
+        +--> definitely_cpu/rtl/imem.v
+        +--> definitely_cpu/rtl/dmem.v
         |
-        +--> tools/isa_config.py
-        +--> tools/asm.py
+        +--> definitely_cpu/tools/isa_config.py
+        +--> definitely_cpu/tools/asm.py
         |
-        +--> llvm-backend/MYISARegisterInfo.td
-        +--> llvm-backend/MYISAInstrFormats.td
-        +--> llvm-backend/MYISAInstrInfo.td
-        +--> llvm-backend/MYISACallingConv.td
-        +--> llvm-backend/MYISAFrameLowering.*
-        +--> llvm-backend/MYISATargetMachine.cpp
+        +--> definitely_cpu/llvm-backend/MYISARegisterInfo.td
+        +--> definitely_cpu/llvm-backend/MYISAInstrFormats.td
+        +--> definitely_cpu/llvm-backend/MYISAInstrInfo.td
+        +--> definitely_cpu/llvm-backend/MYISACallingConv.td
+        +--> definitely_cpu/llvm-backend/MYISAFrameLowering.*
+        +--> definitely_cpu/llvm-backend/MYISATargetMachine.cpp
         |
-        +--> tests/
+        +--> definitely_cpu/tests/
+        
 ```
 
 For any later ISA change:
