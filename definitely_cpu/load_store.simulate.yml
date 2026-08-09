@@ -1,0 +1,26 @@
+simulate:
+  output-dir: ./build/sim-load-store
+  program: ./tests/test_load_store.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r9
+      value: 4660
+    - register: r10
+      value: 52
+    - register: r11
+      value: 18
+    - register: r14
+      value: 43981
+    - register: r16
+      value: 85
+    - register: r19
+      value: 43554
+
+  options:
+    max-cycles: 40
+    trace: false
+
+  assembler: ./tools/asm.py

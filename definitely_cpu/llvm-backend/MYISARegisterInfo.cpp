@@ -45,8 +45,8 @@
 //
 // WHAT COULD BE ADDED:
 //   - requiresRegisterScavenging(): return true if frame offsets might not
-//     fit in the 16-bit addr field (would need a scavenger register)
-//   - eliminateFrameIndex with large offset handling: if SP+offset > 16 bits,
+//     fit in the signed 11-bit memory offset (would need a scavenger register)
+//   - eliminateFrameIndex with large offset handling: if SP+offset does not fit,
 //     emit a multi-instruction sequence to compute the address
 //   - getRegPressureLimit(): tell the scheduler how many GPRs are available
 //   - Per-calling-convention reserved registers (e.g., interrupt handlers

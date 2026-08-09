@@ -24,11 +24,20 @@ module cpu (
     wire call_is_absolute;
     wire is_ret;
     wire is_halt;
+    wire is_load;
+    wire is_store;
+    wire is_loadb;
+    wire is_storeb;
+    wire memory_is_absolute;
+    wire [`REG_ADDR_W-1:0] memory_reg;
+    wire [`REG_ADDR_W-1:0] memory_base;
+    wire [10:0] memory_offset11;
     wire [15:0] immediate16;
     wire reg_write_en;
     wire rf_write_en;
     wire [`REG_ADDR_W-1:0] rf_write_addr;
     wire [`REG_ADDR_W-1:0] rf_read_addr_a;
+    wire [`REG_ADDR_W-1:0] rf_read_addr_b;
     wire [`DATA_MSB:0] rf_write_data;
 
     wire [`DATA_MSB:0] rf_a;
@@ -41,12 +50,25 @@ module cpu (
     wire [`ADDR_MSB:0] jump_target;
     wire [`ADDR_MSB:0] call_target;
     wire [`ADDR_MSB:0] return_address;
+    wire is_memory;
+    wire is_memory_store;
+    wire [`DATA_MSB:0] signed_memory_offset;
+    wire [`DATA_MSB:0] memory_effective_address;
+    wire [`ADDR_MSB:0] dmem_addr;
+    wire [`DATA_MSB:0] dmem_read_word;
+    wire [7:0] dmem_read_byte;
 
     assign dbg_pc = pc;
     assign dbg_halt = is_halt;
     assign rf_write_en = (reg_write_en || is_call) && rst_n;
     assign rf_write_addr = is_call ? `REG_ADDR_W'd3 : dest;
-    assign rf_read_addr_a = is_ret ? `REG_ADDR_W'd3 : arg1;
+    assign is_memory = is_load || is_store || is_loadb || is_storeb;
+    assign is_memory_store = is_store || is_storeb;
+    assign rf_read_addr_a = is_ret
+                          ? `REG_ADDR_W'd3
+                          : ((is_memory && !memory_is_absolute)
+                             ? memory_base : arg1);
+    assign rf_read_addr_b = is_memory_store ? memory_reg : arg2;
     assign return_address = pc + 1'b1;
     assign rf_write_data = is_call
                          ? {{(`DATA_WIDTH-`ADDR_WIDTH){1'b0}}, return_address}
@@ -56,6 +78,12 @@ module cpu (
     assign relative_jump_target = pc + immediate16;
     assign jump_target = jump_is_absolute ? immediate16 : relative_jump_target;
     assign call_target = call_is_absolute ? immediate16 : relative_jump_target;
+    assign signed_memory_offset = {{(`DATA_WIDTH-11){memory_offset11[10]}},
+                                   memory_offset11};
+    assign memory_effective_address = memory_is_absolute
+                                    ? {{(`DATA_WIDTH-16){1'b0}}, immediate16}
+                                    : rf_a + signed_memory_offset;
+    assign dmem_addr = memory_effective_address[`ADDR_MSB:0];
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -94,6 +122,14 @@ module cpu (
         .call_is_absolute(call_is_absolute),
         .is_ret(is_ret),
         .is_halt(is_halt),
+        .is_load(is_load),
+        .is_store(is_store),
+        .is_loadb(is_loadb),
+        .is_storeb(is_storeb),
+        .memory_is_absolute(memory_is_absolute),
+        .memory_reg(memory_reg),
+        .memory_base(memory_base),
+        .memory_offset11(memory_offset11),
         .immediate16(immediate16),
         .reg_write_en(reg_write_en)
     );
@@ -104,7 +140,7 @@ module cpu (
         .wr_addr(rf_write_addr),
         .wr_data(rf_write_data),
         .rd_addr_a(rf_read_addr_a),
-        .rd_addr_b(arg2),
+        .rd_addr_b(rf_read_addr_b),
         .rd_data_a(rf_a),
         .rd_data_b(rf_b)
     );
@@ -119,5 +155,21 @@ module cpu (
         .result(alu_result)
     );
 
-    assign wb_data = is_li ? {{(`DATA_WIDTH-16){1'b0}}, immediate16} : alu_result;
+    dmem u_dmem (
+        .clk(clk),
+        .addr(dmem_addr),
+        .write_word_en(is_store && rst_n),
+        .write_byte_en(is_storeb && rst_n),
+        .write_data(rf_b),
+        .read_word(dmem_read_word),
+        .read_byte(dmem_read_byte)
+    );
+
+    assign wb_data = is_load
+                   ? dmem_read_word
+                   : (is_loadb
+                      ? {{(`DATA_WIDTH-8){1'b0}}, dmem_read_byte}
+                      : (is_li
+                         ? {{(`DATA_WIDTH-16){1'b0}}, immediate16}
+                         : alu_result));
 endmodule

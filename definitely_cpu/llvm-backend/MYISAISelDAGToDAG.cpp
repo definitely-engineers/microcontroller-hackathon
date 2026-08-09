@@ -44,8 +44,7 @@
 //     Decomposes an address expression into (Base, Offset) for memory
 //     instructions. Handles three cases:
 //       FrameIndex → (FI, 0)
-//       reg + const → (reg, const) if const fits in 16 bits
-//       reg + reg → (reg, reg) with 0 offset
+//       reg + const → (reg, const) if const fits in signed 11 bits
 //       bare reg → (reg, 0)
 //
 // WHAT COULD BE ADDED:
@@ -66,6 +65,8 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
+
+#include <utility>
 
 using namespace llvm;
 
@@ -171,9 +172,8 @@ void MYISADAGToDAGISel::Select(SDNode *N) {
 //
 // Cases handled:
 //   1. FrameIndex → (FI, 0) — stack-allocated variables
-//   2. reg + const → (reg, const) — if constant fits in signed 16 bits
-//   3. reg + reg → (reg, reg) — base + index (offset as register)
-//   4. bare reg → (reg, 0) — pointer dereference with no offset
+//   2. reg + const → (reg, const) — if constant fits in signed 11 bits
+//   3. bare reg → (reg, 0) — pointer dereference with no offset
 //===----------------------------------------------------------------------===//
 
 bool MYISADAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base,
@@ -187,16 +187,30 @@ bool MYISADAGToDAGISel::SelectAddr(SDValue Addr, SDValue &Base,
     return true;
   }
 
-  // TODO: recognise richer addressing modes so the compiler can fold address
-  //       arithmetic into your load/store instructions. You may additionally
-  //       match:
-  //         - reg + constant  -> (Base = reg,  Offset = constant)  when the
-  //           constant fits your instruction's offset field
-  //         - reg + reg       -> (Base = reg,  Offset = index reg)
-  //       Match ISD::ADD here and set Base/Offset accordingly before falling
-  //       through to the bare-register case below.
+  // Case 2: fold base + constant when the byte offset fits the signed 11-bit
+  // memory field. A constant may appear on either side of the commutative ADD.
+  if (Addr.getOpcode() == ISD::ADD) {
+    SDValue BaseOp = Addr.getOperand(0);
+    SDValue OffsetOp = Addr.getOperand(1);
 
-  // Fallback: use the whole expression as the base with a zero offset.
+    if (isa<ConstantSDNode>(BaseOp) && !isa<ConstantSDNode>(OffsetOp))
+      std::swap(BaseOp, OffsetOp);
+
+    if (const ConstantSDNode *CN = dyn_cast<ConstantSDNode>(OffsetOp)) {
+      int64_t OffsetValue = CN->getSExtValue();
+      if (OffsetValue >= -1024 && OffsetValue <= 1023) {
+        if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(BaseOp))
+          Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i32);
+        else
+          Base = BaseOp;
+        Offset = CurDAG->getTargetConstant(OffsetValue, SDLoc(Addr), MVT::i32);
+        return true;
+      }
+    }
+  }
+
+  // Fallback: materialise complex or out-of-range address arithmetic into a
+  // register, then use that register with a zero memory offset.
   Base = Addr;
   Offset = CurDAG->getTargetConstant(0, SDLoc(Addr), MVT::i32);
   return true;

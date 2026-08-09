@@ -203,27 +203,25 @@ class Type2LI<bits<9> op, dag outs, dag ins, string asmstr,
 }
 
 //===----------------------------------------------------------------------===//
-// Type2Mem — 内存访问：LOAD_reg / STORE_reg
+// Type2Mem — register-indirect LOAD_reg / STORE_reg
 //
-// ⚠️ 已知的位预算问题（Stage 3 要正式解决）：
-//   register-indirect 寻址需要 rd(5) + rbase(5) + offset(16) = 26 位，
-//   加 opcode(9) + 类型位(1) = 36 位 > 32。装不下。
+// The memory encoding preserves the common Type 2 header:
+//   [31]=0 [30:22]=opcode9 [21]=ri [20:16]=data register
+// For the register-indirect form, ri=0 and the low payload is:
+//   [15:11]=base register [10:0]=signed byte offset11
 //
-//   Stage 1 只需要这两条指令"存在"，让 boilerplate 的 MYISAInstrInfo.cpp
-//   （spill/reload）能编译过。它们在 Stage 1 的测试程序里不会被用到。
-//
-//   因为后端没有 MCCodeEmitter（MCTargetDesc/ 里没有那个文件），LLVM 只产生
-//   汇编文本，二进制编码由 tools/isa_config.py 负责。所以这里的位绑定留空
-//   （TableGen 允许 Inst 位为未定义 '?'），不影响正确性。
-//
-//   Stage 3 要定的方案（保持 opcode 位置不变，只重新划分低 22 位）：
-//     [31]=0  [30:22]=opcode(9)  [21:17]=rd(5)  [16:12]=rbase(5)  [11:0]=offset(12)
+// Absolute memory operations use ri=1 and retain the full unsigned address16
+// payload. The current LLVM instructions below model the register-indirect
+// form used by spills and reloads; tools/asm.py performs final text-to-hex
+// encoding according to this same layout.
 //===----------------------------------------------------------------------===//
 class Type2Mem<bits<9> op, dag outs, dag ins, string asmstr,
                list<dag> pattern>
     : Type2Inst<op, outs, ins, asmstr, pattern> {
   let ri = 0;
-  // reg / addr 位布局 Stage 3 再定
+  // The composite memsrc operand supplies base5 + signed offset11. The data
+  // register is the LOAD destination or STORE source in [20:16]. A future
+  // MCCodeEmitter must bind those operands to reg and addr exactly as above.
 }
 
 //===----------------------------------------------------------------------===//

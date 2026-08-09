@@ -105,6 +105,12 @@ TYPE2_LAYOUT = {
     "addr": {"lsb": 0, "width": 16},
 }
 
+# Memory instructions reuse the Type 2 low 16-bit payload according to ri:
+#   ri = 1: unsigned absolute byte address [15:0]
+#   ri = 0: base register [15:11] + signed two's-complement offset [10:0]
+MEM_BASE_WIDTH = 5
+MEM_OFFSET_WIDTH = 11
+
 
 def _mask(width: int) -> int:
     return (1 << width) - 1
@@ -112,6 +118,10 @@ def _mask(width: int) -> int:
 
 TYPE1_IMM_MAX = _mask(TYPE1_LAYOUT["arg1_val"]["width"])
 TYPE2_ADDR_MASK = _mask(TYPE2_LAYOUT["addr"]["width"])
+MEM_BASE_MASK = _mask(MEM_BASE_WIDTH)
+MEM_OFFSET_MASK = _mask(MEM_OFFSET_WIDTH)
+MEM_OFFSET_MIN = -(1 << (MEM_OFFSET_WIDTH - 1))
+MEM_OFFSET_MAX = (1 << (MEM_OFFSET_WIDTH - 1)) - 1
 
 
 def _encode_with_layout(layout: dict, fields: dict) -> int:
@@ -154,3 +164,41 @@ def encode_type2(opcode, ri, reg, addr):
             "addr": addr,
         },
     )
+
+
+def encode_memory_type2(opcode, data_reg, *, absolute_addr=None,
+                        base_reg=None, offset=0):
+    """Encode a Type 2 memory instruction using the ISA's two address modes.
+
+    Exactly one mode must be selected:
+      * absolute_addr: ri=1 with an unsigned 16-bit byte address
+      * base_reg: ri=0 with a signed 11-bit byte offset
+    """
+    if not (0 <= opcode <= _mask(TYPE2_LAYOUT["opcode"]["width"])):
+        raise ValueError(f"Type 2 opcode out of range: {opcode}")
+    if not (0 <= data_reg < REG_COUNT):
+        raise ValueError(f"Data register out of range: r{data_reg}")
+
+    if absolute_addr is not None:
+        if base_reg is not None:
+            raise ValueError(
+                "Memory instruction cannot use absolute and base modes together")
+        if not (0 <= absolute_addr <= TYPE2_ADDR_MASK):
+            raise ValueError(
+                f"Absolute memory address {absolute_addr} out of range "
+                f"(must be 0-{TYPE2_ADDR_MASK})")
+        return encode_type2(opcode, 1, data_reg, absolute_addr)
+
+    if base_reg is None:
+        raise ValueError(
+            "Register-indirect memory instruction requires a base register")
+    if not (0 <= base_reg < REG_COUNT):
+        raise ValueError(f"Base register out of range: r{base_reg}")
+    if not (MEM_OFFSET_MIN <= offset <= MEM_OFFSET_MAX):
+        raise ValueError(
+            f"Memory offset {offset} out of range "
+            f"(must be {MEM_OFFSET_MIN}..{MEM_OFFSET_MAX})")
+
+    payload = ((base_reg & MEM_BASE_MASK) << MEM_OFFSET_WIDTH)
+    payload |= offset & MEM_OFFSET_MASK
+    return encode_type2(opcode, 0, data_reg, payload)

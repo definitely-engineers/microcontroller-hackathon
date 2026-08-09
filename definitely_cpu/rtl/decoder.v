@@ -18,6 +18,14 @@ module decoder (
     output wire                    call_is_absolute,
     output wire                    is_ret,
     output wire                    is_halt,
+    output wire                    is_load,
+    output wire                    is_store,
+    output wire                    is_loadb,
+    output wire                    is_storeb,
+    output wire                    memory_is_absolute,
+    output wire [`REG_ADDR_W-1:0] memory_reg,
+    output wire [`REG_ADDR_W-1:0] memory_base,
+    output wire [10:0]             memory_offset11,
     output wire [15:0]             immediate16,
     output wire                    reg_write_en
 );
@@ -45,6 +53,15 @@ module decoder (
     assign call_is_absolute = is_call && t2_ri;
     assign is_ret  = !is_type1 && (t2_opcode == `OP_RET);
     assign is_halt = is_jmp && !t2_ri && (immediate16 == 16'h0000);
-    assign dest = is_li ? t2_reg : instr[4:0];
-    assign reg_write_en = is_add || is_sub || is_mov || is_li;
+    assign is_load   = !is_type1 && (t2_opcode == `OP_LOAD);
+    assign is_store  = !is_type1 && (t2_opcode == `OP_STORE);
+    assign is_loadb  = !is_type1 && (t2_opcode == `OP_LOADB);
+    assign is_storeb = !is_type1 && (t2_opcode == `OP_STOREB);
+    assign memory_is_absolute = t2_ri;
+    assign memory_reg = t2_reg;
+    assign memory_base = instr[15:11];
+    assign memory_offset11 = instr[10:0];
+    assign dest = (is_li || is_load || is_loadb) ? t2_reg : instr[4:0];
+    assign reg_write_en = is_add || is_sub || is_mov || is_li ||
+                          is_load || is_loadb;
 endmodule

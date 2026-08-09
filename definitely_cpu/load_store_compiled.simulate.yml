@@ -1,0 +1,16 @@
+simulate:
+  output-dir: ./build/sim-load-store-compiled
+  program: ./build/compile-load-store/program.hex
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r8
+      value: 4660
+
+  options:
+    max-cycles: 30
+    trace: false
+
+  assembler: ./tools/asm.py

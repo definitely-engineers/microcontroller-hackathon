@@ -38,7 +38,7 @@
 //   - requiresRegisterScavenging(): enable emergency spill for out-of-regs
 //   - requiresFrameIndexScavenging(): handle cases where frame offset is too large
 //   - eliminateFrameIndex with large offsets: emit multi-instruction sequences
-//     when SP+offset exceeds the 16-bit encoding limit
+//     when SP+offset exceeds the signed 11-bit encoding limit
 //   - trackLivenessAfterRegAlloc(): enable post-RA liveness tracking
 //
 //===----------------------------------------------------------------------===//
