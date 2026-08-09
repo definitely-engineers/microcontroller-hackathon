@@ -154,6 +154,11 @@ void MYISAAsmPrinter::emitInstruction(const MachineInstr *MI) {
           MCSymbolRefExpr::create(getSymbol(MO.getGlobal()), OutContext)));
       break;
 
+    case MachineOperand::MO_ExternalSymbol:
+      TmpInst.addOperand(MCOperand::createExpr(MCSymbolRefExpr::create(
+          GetExternalSymbolSymbol(MO.getSymbolName()), OutContext)));
+      break;
+
     default:
       // Other operand types (ConstantPoolIndex, JumpTableIndex, etc.)
       // are not yet handled — they would be needed for more complex code.

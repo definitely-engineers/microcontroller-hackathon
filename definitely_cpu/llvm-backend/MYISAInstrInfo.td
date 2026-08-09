@@ -233,6 +233,18 @@ def MOV_rr : Type1RR<0x000F, "MOV",
   (outs GPR:$rd), (ins GPR:$rs1),
   "MOV\t$rd, $rs1", []>;
 
+// CMP always writes the architectural condition register r5.  The selector
+// chooses the immediate form only when the literal fits the 5-bit field.
+let Defs = [R5], hasSideEffects = 1 in {
+def CMP_rr : Type1CmpRR<0x000D,
+  (outs), (ins GPR:$rs1, GPR:$rs2),
+  "CMP\tr5, $rs1, $rs2", []>;
+
+def CMP_ri : Type1CmpRI<0x000D,
+  (outs), (ins GPR:$rs1, imm5:$imm),
+  "CMP\tr5, $rs1, #$imm", []>;
+}
+
 // Frame lowering needs physical SP/FP copies, but r2 is intentionally not a
 // GPR. These codegen-only forms share the architectural MOV encoding while
 // keeping TableGen's operand constraints accurate.
@@ -253,17 +265,25 @@ def NEG_rr : Type1RR<0x0008, "NEG",
   "NEG\t$rd, $rs1", []>;
 
 // LI rd, #imm16 — 装 16 位立即数（Type 2，立即数字段有完整 16 位）
-let isReMaterializable = 1, isAsCheapAsAMove = 1 in
 def LI : Type2LI<0x00D,
-  (outs GPR:$rd), (ins imm16u:$imm),
-  "LI\t$rd, #$imm",
-  [(set GPR:$rd, imm16u:$imm)]>;
+    (outs GPR:$rd), (ins imm16u:$imm),
+    "LI\t$rd, #$imm",
+    []>;
 
 // RET — 从函数返回。匹配 LowerReturn() 发出的 retflag 节点
-let isReturn = 1, isTerminator = 1, isBarrier = 1 in
+let isReturn = 1, isTerminator = 1, isBarrier = 1, Uses = [R3] in
 def RET : Type2NoArg<0x00A,
   (outs), (ins),
   "RET", [(retflag)]>;
+
+// CALL target -- write the architectural return address to r3 and transfer
+// control to a PC-relative function symbol.  The variadic operands carry the
+// physical argument-register uses and the call-preserved register mask that
+// LowerCall attaches to the custom CALL DAG node.
+let isCall = 1, Defs = [R3], hasSideEffects = 1 in
+def CALL : Type2Branch<0x009,
+  (outs), (ins calltarget:$target, variable_ops),
+  "CALL\t$target", []>;
 
 // LOAD_reg / STORE_reg — 寄存器间接寻址的读写
 // boilerplate 的 MYISAInstrInfo.cpp 按这两个名字发射 spill/reload：
@@ -304,6 +324,27 @@ let Uses = [R2], Defs = [R2], mayLoad = 1, hasSideEffects = 1 in
 def POP : Type2Stack<0x00C,
   (outs STACKREG:$regop), (ins),
   "POP\t$regop", []>;
+
+// Stage 2 control flow.  JMP is selected directly from LLVM's generic
+// unconditional branch.  Conditional branches are selected after the custom
+// CMP + BR_CC lowering and consume r5 implicitly.
+let isBranch = 1, isTerminator = 1 in {
+  let isBarrier = 1 in
+  def JMP : Type2Branch<0x004,
+    (outs), (ins brtarget16:$target),
+    "JMP\t$target", [(br bb:$target)]>;
+
+  let Uses = [R5] in {
+    def JZ : Type2Branch<0x005,
+      (outs), (ins brtarget16:$target), "JZ\t$target", []>;
+    def JNZ : Type2Branch<0x006,
+      (outs), (ins brtarget16:$target), "JNZ\t$target", []>;
+    def JLT : Type2Branch<0x007,
+      (outs), (ins brtarget16:$target), "JLT\t$target", []>;
+    def JGT : Type2Branch<0x008,
+      (outs), (ins brtarget16:$target), "JGT\t$target", []>;
+  }
+}
 
 // TODO: define the rest of your ALU instructions using the same pattern.
 //       Map each LLVM SelectionDAG node to one of your opcodes, for example:

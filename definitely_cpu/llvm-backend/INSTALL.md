@@ -179,7 +179,7 @@ These are `#include`d directly into C++ files. You never edit them.
 | Register | Role | Allocatable? |
 |---|---|---|
 | r0 | Hard-wired zero | No |
-| r1 | Program counter | No |
+| r1 | Reserved; no architecturally defined read value | No |
 | r2 | Stack pointer (SP) | No |
 | r3 | Link register (return address) | No |
 | r4 | Thread pointer (reserved) | No |

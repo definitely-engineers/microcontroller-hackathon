@@ -1,0 +1,9 @@
+simulate:
+  output-dir: ./build/sim-stage3-recursion
+  program: ./build/compile-stage3-recursion/program.hex
+  rtl: {dir: ./rtl}
+  verify:
+    - {register: r2, value: 31744}
+    - {register: r8, value: 21}
+  options: {max-cycles: 500, trace: false}
+  assembler: ./tools/asm.py

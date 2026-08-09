@@ -1,0 +1,9 @@
+simulate:
+  output-dir: ./build/sim-stage3-leaf
+  program: ./build/compile-stage3-leaf/program.hex
+  rtl: {dir: ./rtl}
+  verify:
+    - {register: r2, value: 31744}
+    - {register: r8, value: 42}
+  options: {max-cycles: 100, trace: false}
+  assembler: ./tools/asm.py

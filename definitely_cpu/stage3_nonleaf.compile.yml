@@ -1,0 +1,14 @@
+compile:
+  output-dir: ./build/compile-stage3-nonleaf
+  compiler:
+    install-dir: /llvm-build
+    target: myisa
+    misc: [-O0, --target=i386-unknown-none-elf]
+    codegen: [-O0]
+    add-path: []
+  output: {asm: true, hex: true, name: program, assembler: ""}
+  startup: {entry: stage3_nonleaf, args: [20]}
+  groups:
+    - group: Tests
+      files:
+        - file: ./tests/test_stage3_nonleaf.c

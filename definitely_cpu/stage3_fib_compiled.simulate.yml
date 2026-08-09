@@ -1,0 +1,9 @@
+simulate:
+  output-dir: ./build/sim-stage3-fib
+  program: ./build/compile-stage3-fib/program.hex
+  rtl: {dir: ./rtl}
+  verify:
+    - {register: r2, value: 31744}
+    - {register: r8, value: 13}
+  options: {max-cycles: 2000, trace: false}
+  assembler: ./tools/asm.py
