@@ -162,6 +162,13 @@ MYISATargetLowering::MYISATargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8,  Expand);
   setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16, Expand);
 
+  // Native memory operations. Byte loads are unsigned/zero-extending; signed
+  // byte loads remain expandable through the generic legalizer.
+  setOperationAction(ISD::LOAD,  MVT::i32, Legal);
+  setOperationAction(ISD::STORE, MVT::i32, Legal);
+  setLoadExtAction(ISD::ZEXTLOAD, MVT::i32, MVT::i8, Legal);
+  setTruncStoreAction(MVT::i32, MVT::i8, Legal);
+
   // 动态栈分配（alloca / 变长数组）：不支持
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32,   Expand);
   setOperationAction(ISD::STACKSAVE,          MVT::Other, Expand);

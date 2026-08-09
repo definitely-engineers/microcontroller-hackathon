@@ -47,6 +47,7 @@ from isa_config import (
     T1_UNARY,
     TYPE2_ADDR_MASK,
     T2_OPS,
+    encode_memory_type2,
     encode_type1,
     encode_type2,
 )
@@ -69,11 +70,14 @@ def parse_imm(s):
     s = s.strip()
     if s.startswith('#'):
         s = s[1:]
-    if s.startswith('0x') or s.startswith('0X'):
-        return int(s, 16)
-    if s.startswith('-'):
-        return int(s)
-    return int(s)
+    sign = 1
+    if s.startswith(('+', '-')):
+        if s[0] == '-':
+            sign = -1
+        s = s[1:]
+    if s.startswith(('0x', '0X')):
+        return sign * int(s, 16)
+    return sign * int(s, 10)
 
 def assemble(lines):
     """Two-pass assembler. Returns list of instruction words."""
@@ -232,8 +236,13 @@ def assemble_line(line, pc, labels):
                     offset_str = ri_m.group(2) or ''
                     # Normalise LLVM-style '+-N' to '-N'.
                     offset_str = re.sub(r'^\+-', '-', offset_str)
-                    offset = int(offset_str) if offset_str else 0
-                    return encode_type2(opcode9, 0, reg, offset & TYPE2_ADDR_MASK)
+                    offset = parse_imm(offset_str) if offset_str else 0
+                    return encode_memory_type2(
+                        opcode9,
+                        reg,
+                        base_reg=base_reg,
+                        offset=offset,
+                    )
             # Absolute: [#addr], [addr], [label]
             if mem_str.startswith('#'):
                 addr16 = parse_imm(mem_str)
@@ -241,7 +250,11 @@ def assemble_line(line, pc, labels):
                 addr16 = labels[mem_str]
             else:
                 addr16 = parse_imm(mem_str)
-            return encode_type2(opcode9, 1, reg, addr16 & TYPE2_ADDR_MASK)
+            return encode_memory_type2(
+                opcode9,
+                reg,
+                absolute_addr=addr16,
+            )
 
     raise ValueError(f"Unknown mnemonic: {mnemonic}")
 

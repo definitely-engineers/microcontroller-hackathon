@@ -2,8 +2,8 @@
 
 **Project:** 2026 Microcontroller Hackathon  
 **ISA name:** MYISA / Definitely CPU Baseline  
-**Version:** v0.1  
-**Status:** Baseline architecture locked for initial implementation
+**Version:** v0.3
+**Status:** Baseline architecture and memory addressing encoding locked for implementation
 
 > This baseline intentionally adopts the supplied MYISA worked-example ISA wherever possible to reduce LLVM/toolchain integration risk. Team-specific choices are limited mainly to memory organization and memory sizes. Any later ISA change must update this document first, then the RTL, assembler, LLVM backend, tests, and configuration together.
 
@@ -257,13 +257,40 @@ Immediate flag:
 | `[30:22]` | 9 | Opcode |
 | `[21]` | 1 | `ri` mode flag |
 | `[20:16]` | 5 | Register |
-| `[15:0]` | 16 | Address / offset / immediate |
+| `[15:0]` | 16 | Mode-dependent address / immediate payload |
 
 `ri` interpretation:
 
 - `LI`: `ri = 1`; lower 16 bits are the immediate.
 - Branch/call: `ri = 0` for PC-relative target; `ri = 1` for absolute target.
 - Memory access: `ri = 0` for register-indirect/base+offset form; `ri = 1` for absolute address form.
+
+For memory instructions, `[20:16]` is the data register: the destination for
+`LOAD`/`LOADB`, or the source for `STORE`/`STOREB`.
+
+Memory instructions reinterpret the low 16-bit payload as follows.
+
+`ri = 1` — unsigned absolute byte address:
+
+```text
+31 30                22 21 20           16 15                         0
++--+-------------------+--+---------------+-----------------------------+
+|0 |    opcode [9]     |1 | data reg [5]  | absolute address [16]       |
++--+-------------------+--+---------------+-----------------------------+
+```
+
+`ri = 0` — base register plus signed byte offset:
+
+```text
+31 30                22 21 20           16 15       11 10              0
++--+-------------------+--+---------------+-----------+------------------+
+|0 |    opcode [9]     |0 | data reg [5]  | base [5]  | signed off [11]  |
++--+-------------------+--+---------------+-----------+------------------+
+```
+
+The signed 11-bit offset uses two's-complement representation and has the
+inclusive range `-1024..+1023`. It is a byte offset and is not implicitly
+scaled by the access size.
 
 ---
 
@@ -464,8 +491,23 @@ STORE r9, [sp + 8]
 Effective address:
 
 ```text
-DMEM byte address = base register + 16-bit offset
+DMEM byte address = base register + sign_extend(signed offset11)
 ```
+
+Register-indirect encoding:
+
+```text
+[31]      type = 0
+[30:22]   opcode9
+[21]      ri = 0
+[20:16]   load destination or store source register
+[15:11]   base register
+[10:0]    signed byte offset11, two's complement
+```
+
+The offset range is `-1024..+1023`. Values outside this range must be rejected
+by the assembler or materialized as a separate address calculation by the
+compiler; they must not be silently truncated.
 
 ### Absolute address
 
@@ -478,12 +520,36 @@ LOAD  r8, [0x0100]
 STORE r9, [0x0200]
 ```
 
+Absolute encoding:
+
+```text
+[31]      type = 0
+[30:22]   opcode9
+[21]      ri = 1
+[20:16]   load destination or store source register
+[15:0]    unsigned absolute byte address16
+```
+
+The encoding permits `0x0000..0xFFFF`; the implemented DMEM currently occupies
+`0x0000..0x7FFF`, so software must still use an implemented physical address.
+
+Reference machine-code examples:
+
+```text
+LOAD  r8, [r30 + 4] -> 0x0008F004
+LOAD  r8, [0x1234]  -> 0x00281234
+STORE r9, [sp - 4]  -> 0x004917FC
+```
+
 ### Access sizes
 
 ```text
 LOAD / STORE   -> 32-bit word
 LOADB / STOREB -> 8-bit byte
 ```
+
+`LOADB` zero-extends the selected byte to 32 bits. `STOREB` writes the low
+8 bits of the source register and leaves the other bytes unchanged.
 
 ---
 
@@ -586,7 +652,8 @@ For any later ISA change:
 
 - 32-bit datapath and 32-bit fixed instructions match the supplied template and reduce integration risk.
 - 32 registers preserve the supplied 5-bit register encoding and register/backend structure.
-- 16-bit physical addresses fit directly in the Type 2 format.
+- 16-bit absolute physical addresses fit directly in the Type 2 format; the
+  base-relative memory form reuses those bits as base5 + signed offset11.
 - Harvard memory simplifies the intended single-cycle baseline CPU.
 - Word-addressed IMEM gives simple `PC + 1` sequential execution.
 - Byte-addressed DMEM is compatible with normal C byte access.
@@ -611,3 +678,13 @@ docs/tutorial-workbook.pdf
 ```
 
 The supplied files contain worked examples and TODOs. This specification records the team's decision to adopt those example conventions as the baseline unless explicitly overridden above.
+
+---
+
+## 16. Revision History
+
+| Version | Date | Change |
+|---|---|---|
+| `v0.1` | 2026-08-08 | Initial team baseline. |
+| `v0.2` | 2026-08-09 | Locked memory `ri=0` as base5 + signed offset11 while retaining `ri=1` absolute address16 and the existing Type 2 header. |
+| `v0.3` | 2026-08-09 | Defined `LOADB` zero-extension and `STOREB` low-byte semantics for the data-memory implementation. |

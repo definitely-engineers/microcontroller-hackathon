@@ -18,3 +18,17 @@ python3 resources/software/scripts/simulate.py definitely_cpu/add.simulate.yml
 ```
 
 The expected result is `ALL 1 checks PASSED`.
+
+## Stage 3: data memory
+
+The memory slice implements little-endian `LOAD`, `STORE`, `LOADB`, and
+`STOREB` with absolute address16 and base-register + signed offset11 modes.
+Run the assembly-level RTL regression inside the Dev Container:
+
+```bash
+python3 resources/software/scripts/simulate.py \
+  definitely_cpu/load_store.simulate.yml
+```
+
+The test covers word/byte accesses, positive and negative offsets, byte
+zero-extension, and byte-store preservation within an existing word.

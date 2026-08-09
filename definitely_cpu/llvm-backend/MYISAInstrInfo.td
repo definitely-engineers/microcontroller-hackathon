@@ -68,10 +68,14 @@ include "MYISAInstrFormats.td"
 // when a DAG constant qualifies for this operand type.
 def imm5 : Operand<i32>, ImmLeaf<i32, [{return Imm >= 0 && Imm <= 31;}]>;
 
-// imm16: 16-bit address or offset.
-// Fits in the Type 2 addr field (16 bits). Used for memory addresses and
-// branch offsets. No predicate — validation happens elsewhere.
+// imm16: 16-bit address or branch offset.
+// Memory register-indirect offsets use imm11s below instead.
 def imm16 : Operand<i32>;
+
+// imm11s: signed 11-bit byte offset (range -1024..+1023).
+// Used by register-indirect memory operands in the low 11 instruction bits.
+def imm11s : Operand<i32>,
+             ImmLeaf<i32, [{return Imm >= -1024 && Imm <= 1023;}]>;
 
 // imm16u: 16-bit unsigned immediate (range 0–65535).
 // Used by the LI (Load Immediate) instruction for materializing constants
@@ -94,12 +98,12 @@ def calltarget : Operand<i32> {
   let EncoderMethod = "encodeBranchTarget";
 }
 
-// memsrc: composite memory operand (base register + 16-bit offset).
+// memsrc: composite memory operand (base register + signed 11-bit byte offset).
 // MIOperandInfo declares that this operand expands to TWO sub-operands
-// at the MachineInstr level: a GPR (base register) and an imm16 (offset).
+// at the MachineInstr level: a GPR (base register) and an imm11s (offset).
 // PrintMethod specifies how to render it in assembly (e.g., "[r8 + 4]").
 def memsrc : Operand<i32> {
-  let MIOperandInfo = (ops GPR, imm16);
+  let MIOperandInfo = (ops GPR, imm11s);
   let PrintMethod = "printMemOperand";
 }
 
@@ -242,12 +246,22 @@ def RET : Type2NoArg<0x00A,
 let mayLoad = 1 in
 def LOAD_reg : Type2Mem<0x000,
   (outs GPR:$rd), (ins memsrc:$addr),
-  "LOAD\t$rd, $addr", []>;
+  "LOAD\t$rd, $addr", [(set GPR:$rd, (load addr:$addr))]>;
 
 let mayStore = 1 in
 def STORE_reg : Type2Mem<0x001,
   (outs), (ins GPR:$rs, memsrc:$addr),
-  "STORE\t$rs, $addr", []>;
+  "STORE\t$rs, $addr", [(store GPR:$rs, addr:$addr)]>;
+
+let mayLoad = 1 in
+def LOADB_reg : Type2Mem<0x002,
+  (outs GPR:$rd), (ins memsrc:$addr),
+  "LOADB\t$rd, $addr", [(set GPR:$rd, (zextloadi8 addr:$addr))]>;
+
+let mayStore = 1 in
+def STOREB_reg : Type2Mem<0x003,
+  (outs), (ins GPR:$rs, memsrc:$addr),
+  "STOREB\t$rs, $addr", [(truncstorei8 GPR:$rs, addr:$addr)]>;
 
 // TODO: define the rest of your ALU instructions using the same pattern.
 //       Map each LLVM SelectionDAG node to one of your opcodes, for example:

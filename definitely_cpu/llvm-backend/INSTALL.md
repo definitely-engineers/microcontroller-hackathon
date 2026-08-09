@@ -213,10 +213,14 @@ These are `#include`d directly into C++ files. You never edit them.
 ```
 [31]    = 0 (type bit)
 [30:22] = opcode (9 bits)
-[21]    = reg/imm flag
-[20:16] = register (5 bits)
-[15:0]  = address/offset (16 bits)
+[21]    = mode flag
+[20:16] = data register (5 bits)
+[15:0]  = mode-dependent payload
 ```
+
+For memory instructions, `ri=1` uses the low 16 bits as an unsigned absolute
+byte address. `ri=0` divides the payload into base register `[15:11]` and
+signed byte offset `[10:0]` (`-1024..+1023`).
 
 ---
 
