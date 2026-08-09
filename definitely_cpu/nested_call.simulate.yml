@@ -1,0 +1,20 @@
+simulate:
+  output-dir: ./build/sim-nested-call
+  program: ./tests/test_nested_call.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r2
+      value: 31744
+    - register: r3
+      value: 3
+    - register: r8
+      value: 2
+
+  options:
+    max-cycles: 30
+    trace: false
+
+  assembler: ./tools/asm.py

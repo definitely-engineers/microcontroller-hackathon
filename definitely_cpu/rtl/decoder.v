@@ -23,6 +23,8 @@ module decoder (
     output wire                    is_call,
     output wire                    call_is_absolute,
     output wire                    is_ret,
+    output wire                    is_push,
+    output wire                    is_pop,
     output wire                    is_halt,
     output wire                    is_load,
     output wire                    is_store,
@@ -64,6 +66,8 @@ module decoder (
     assign is_call = !is_type1 && (t2_opcode == `OP_CALL);
     assign call_is_absolute = is_call && t2_ri;
     assign is_ret  = !is_type1 && (t2_opcode == `OP_RET);
+    assign is_push = !is_type1 && (t2_opcode == `OP_PUSH);
+    assign is_pop  = !is_type1 && (t2_opcode == `OP_POP);
     assign is_halt = is_jmp && !t2_ri && (immediate16 == 16'h0000);
     assign is_load   = !is_type1 && (t2_opcode == `OP_LOAD);
     assign is_store  = !is_type1 && (t2_opcode == `OP_STORE);
@@ -73,10 +77,10 @@ module decoder (
     assign memory_reg = t2_reg;
     assign memory_base = instr[15:11];
     assign memory_offset11 = instr[10:0];
-    assign dest = (is_li || is_load || is_loadb)
+    assign dest = (is_li || is_load || is_loadb || is_pop)
                 ? t2_reg
                 : (is_cmp ? `REG_ADDR_W'd5 : instr[4:0]);
     assign reg_write_en = is_add || is_sub || is_cmp || is_mov || is_li ||
-                          is_load || is_loadb;
+                          is_load || is_loadb || is_pop;
 endmodule
 

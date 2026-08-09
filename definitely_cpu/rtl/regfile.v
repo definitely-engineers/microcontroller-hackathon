@@ -5,6 +5,8 @@ module regfile (
     input  wire                    wr_en,
     input  wire [`REG_ADDR_W-1:0] wr_addr,
     input  wire [`DATA_MSB:0]      wr_data,
+    input  wire                    sp_wr_en,
+    input  wire [`DATA_MSB:0]      sp_wr_data,
     input  wire [`REG_ADDR_W-1:0] rd_addr_a,
     input  wire [`REG_ADDR_W-1:0] rd_addr_b,
     output wire [`DATA_MSB:0]      rd_data_a,
@@ -13,7 +15,13 @@ module regfile (
     reg [`DATA_MSB:0] regs [0:`REG_COUNT-1];
 
     always @(posedge clk) begin
-        if (wr_en && wr_addr != {`REG_ADDR_W{1'b0}})
+        // PUSH/POP update r2 (SP) while POP may also restore another
+        // register through the normal write port on the same clock edge.
+        if (sp_wr_en)
+            regs[2] <= sp_wr_data;
+
+        if (wr_en && wr_addr != {`REG_ADDR_W{1'b0}} &&
+            !(sp_wr_en && wr_addr == `REG_ADDR_W'd2))
             regs[wr_addr] <= wr_data;
     end
 

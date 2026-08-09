@@ -16,6 +16,8 @@
 `define OP_JGT 9'h008
 `define OP_CALL 9'h009
 `define OP_RET  9'h00A
+`define OP_PUSH 9'h00B
+`define OP_POP  9'h00C
 `define OP_LI  9'h00D
 
 `endif
