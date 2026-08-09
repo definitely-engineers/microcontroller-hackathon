@@ -68,6 +68,18 @@ public:
   // Needed when: variable-sized objects (alloca), or frame address is taken.
   bool hasFP(const MachineFunction &MF) const override;
 
+  bool hasReservedCallFrame(const MachineFunction &MF) const override;
+
+  bool spillCalleeSavedRegisters(
+      MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+      ArrayRef<CalleeSavedInfo> CSI,
+      const TargetRegisterInfo *TRI) const override;
+
+  bool restoreCalleeSavedRegisters(
+      MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+      MutableArrayRef<CalleeSavedInfo> CSI,
+      const TargetRegisterInfo *TRI) const override;
+
   // eliminateCallFramePseudoInstr: Removes ADJCALLSTACKDOWN/UP pseudo-instrs.
   // Since we allocate the full frame in the prologue (including outgoing arg
   // space), these pseudos are just erased — no actual SP adjustment needed.

@@ -56,11 +56,13 @@
 
 #include "MYISARegisterInfo.h"
 #include "MYISA.h"
+#include "MYISAFrameLowering.h"
 #include "MYISASubtarget.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
+#include "llvm/Support/ErrorHandling.h"
 
 // Include the auto-generated register info implementation tables.
 // Contains: register encoding arrays, register class membership, sub-reg info.
@@ -116,10 +118,11 @@ BitVector MYISARegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   Reserved.set(MYISA::R6);
   Reserved.set(MYISA::R7);
 
-  // NOTE: R30 is NOT reserved here. Even though r30 is used as a frame
-  // pointer when needed (hasFP() returns true), it's still allocatable
-  // in functions that don't need a frame pointer. This gives the RA an
-  // extra register to work with in most functions.
+  if (MF.getSubtarget<MYISASubtarget>().getFrameLowering()->hasFP(MF))
+    Reserved.set(MYISA::R30);
+
+  // R30 remains allocatable in ordinary fixed-size frames, but is reserved
+  // when hasFP() selects it as the frame pointer.
 
   return Reserved;
 }
@@ -154,8 +157,15 @@ bool MYISARegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
   // Calculate the SP-relative offset
   int Offset = MFI.getObjectOffset(FrameIndex) + (int)MFI.getStackSize() + SPAdj;
 
-  // Replace the frame index operand with the base register (SP = R2)
-  Register BaseReg = MYISA::R2;
+  const bool UseFP =
+      MF.getSubtarget<MYISASubtarget>().getFrameLowering()->hasFP(MF);
+  if (UseFP) {
+    const int CalleeSavedSize =
+        static_cast<int>(MFI.getCalleeSavedInfo().size() * 4);
+    Offset = MFI.getObjectOffset(FrameIndex) + CalleeSavedSize + SPAdj;
+  }
+
+  Register BaseReg = UseFP ? MYISA::R30 : MYISA::R2;
   Instr.getOperand(FIOperandNum).ChangeToRegister(BaseReg, false);
 
   // Set the offset in the next operand (the immediate field of memsrc)
@@ -165,11 +175,16 @@ bool MYISARegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
     Instr.getOperand(FIOperandNum + 1).setImm(Offset);
   }
 
+  if (Offset < -1024 || Offset > 1023)
+    report_fatal_error("MYISA stack offset exceeds signed 11-bit range");
+
   return false;  // false = no additional scavenging needed
 }
 
 // getFrameRegister — Returns the register used as the frame base.
 // All frame-relative accesses use SP (R2) in MYISA (no separate FP by default).
 Register MYISARegisterInfo::getFrameRegister(const MachineFunction &MF) const {
-  return MYISA::R2;
+  return MF.getSubtarget<MYISASubtarget>().getFrameLowering()->hasFP(MF)
+             ? MYISA::R30
+             : MYISA::R2;
 }

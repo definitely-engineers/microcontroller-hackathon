@@ -60,12 +60,44 @@
 #include "MYISA.h"
 #include "MYISAInstrInfo.h"
 #include "MYISASubtarget.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+
 using namespace llvm;
+
+namespace {
+
+constexpr uint64_t StackSlotSize = 4;
+constexpr uint64_t MaxStackAdjustImm = 31;
+
+static uint64_t getCalleeSavedFrameSize(const MachineFrameInfo &MFI) {
+  return MFI.getCalleeSavedInfo().size() * StackSlotSize;
+}
+
+static void emitSPAdjustment(MachineBasicBlock &MBB,
+                             MachineBasicBlock::iterator InsertPt,
+                             const DebugLoc &DL, const MYISAInstrInfo &TII,
+                             uint64_t Amount, bool Allocate,
+                             MachineInstr::MIFlag Flag) {
+  const unsigned Opcode = Allocate ? MYISA::SUB_sp_ri : MYISA::ADD_sp_ri;
+  while (Amount != 0) {
+    const uint64_t Chunk = std::min(Amount, MaxStackAdjustImm);
+    BuildMI(MBB, InsertPt, DL, TII.get(Opcode), MYISA::R2)
+        .addReg(MYISA::R2)
+        .addImm(Chunk)
+        .setMIFlag(Flag);
+    Amount -= Chunk;
+  }
+}
+
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // hasFP — Determine if a frame pointer is needed
@@ -83,6 +115,10 @@ bool MYISAFrameLowering::hasFP(const MachineFunction &MF) const {
   return MFI.hasVarSizedObjects() || MFI.isFrameAddressTaken();
 }
 
+bool MYISAFrameLowering::hasReservedCallFrame(const MachineFunction &MF) const {
+  return !MF.getFrameInfo().hasVarSizedObjects();
+}
+
 //===----------------------------------------------------------------------===//
 // emitPrologue — Generate function entry code
 //===----------------------------------------------------------------------===//
@@ -98,18 +134,28 @@ void MYISAFrameLowering::emitPrologue(MachineFunction &MF,
   if (MBBI != MBB.end())
     DL = MBBI->getDebugLoc();
 
-  // TODO: emit your function prologue. Use BuildMI(MBB, MBBI, DL, TII.get(...))
-  //       with the FrameSetup flag. A typical prologue does, in order:
-  //         1. Save the link/return-address register if this function calls
-  //            others: if (MF.getFrameInfo().hasCalls()) PUSH the LR.
-  //         2. Save each callee-saved register the function uses:
-  //            for (auto &E : MFI.getCalleeSavedInfo()) PUSH E.getReg().
-  //         3. If hasFP(MF), set the frame pointer to the current SP.
-  //         4. Allocate locals by subtracting MFI.getStackSize() from SP
-  //            (loop in chunks if your immediate field is narrow).
-  //       See the Stage 3 tutorial for a worked example.
-  (void)TII;
-  (void)MFI;
+  // PEI inserts callee-saved PUSH instructions before calling this hook.
+  // Allocate locals after those pushes so the final SP is the base used by
+  // frame-index elimination.
+  while (MBBI != MBB.end() && MBBI->getFlag(MachineInstr::FrameSetup) &&
+         MBBI->getOpcode() == MYISA::PUSH)
+    ++MBBI;
+
+  if (MBBI != MBB.end())
+    DL = MBBI->getDebugLoc();
+
+  const uint64_t StackSize = MFI.getStackSize();
+  const uint64_t CalleeSavedSize = getCalleeSavedFrameSize(MFI);
+  assert(StackSize >= CalleeSavedSize && "invalid MYISA stack frame size");
+  const uint64_t LocalSize = StackSize - CalleeSavedSize;
+
+  if (hasFP(MF))
+    BuildMI(MBB, MBBI, DL, TII.get(MYISA::MOV_fp_sp), MYISA::R30)
+        .addReg(MYISA::R2)
+        .setMIFlag(MachineInstr::FrameSetup);
+
+  emitSPAdjustment(MBB, MBBI, DL, TII, LocalSize,
+                   /*Allocate=*/true, MachineInstr::FrameSetup);
 }
 
 //===----------------------------------------------------------------------===//
@@ -127,16 +173,68 @@ void MYISAFrameLowering::emitEpilogue(MachineFunction &MF,
   if (MBBI != MBB.end())
     DL = MBBI->getDebugLoc();
 
-  // TODO: emit your function epilogue — the mirror image of the prologue, in
-  //       reverse order, using the FrameDestroy flag. A typical epilogue does:
-  //         1. Deallocate locals: restore SP from the frame pointer (if
-  //            hasFP(MF)) or add MFI.getStackSize() back to SP.
-  //         2. Restore callee-saved registers in REVERSE order (iterate
-  //            MFI.getCalleeSavedInfo() backwards and POP each).
-  //         3. Restore the link/return-address register if it was saved.
-  //       The RET instruction that follows returns control to the caller.
-  (void)TII;
-  (void)MFI;
+  // PEI has inserted callee-saved POPs immediately before RET. Release local
+  // space before the first POP so each restore reads its matching PUSH slot.
+  MachineBasicBlock::iterator RestorePt = MBBI;
+  while (RestorePt != MBB.begin()) {
+    MachineBasicBlock::iterator Prev = std::prev(RestorePt);
+    if (!Prev->getFlag(MachineInstr::FrameDestroy) ||
+        Prev->getOpcode() != MYISA::POP)
+      break;
+    RestorePt = Prev;
+  }
+
+  const uint64_t StackSize = MFI.getStackSize();
+  const uint64_t CalleeSavedSize = getCalleeSavedFrameSize(MFI);
+  assert(StackSize >= CalleeSavedSize && "invalid MYISA stack frame size");
+  const uint64_t LocalSize = StackSize - CalleeSavedSize;
+
+  if (hasFP(MF))
+    BuildMI(MBB, RestorePt, DL, TII.get(MYISA::MOV_sp_fp), MYISA::R2)
+        .addReg(MYISA::R30)
+        .setMIFlag(MachineInstr::FrameDestroy);
+  else
+    emitSPAdjustment(MBB, RestorePt, DL, TII, LocalSize,
+                     /*Allocate=*/false, MachineInstr::FrameDestroy);
+}
+
+bool MYISAFrameLowering::spillCalleeSavedRegisters(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+    ArrayRef<CalleeSavedInfo> CSI, const TargetRegisterInfo *) const {
+  if (CSI.empty())
+    return false;
+
+  DebugLoc DL;
+  if (MI != MBB.end())
+    DL = MI->getDebugLoc();
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (const CalleeSavedInfo &Info : CSI) {
+    Register Reg = Info.getReg();
+    MBB.addLiveIn(Reg);
+    BuildMI(MBB, MI, DL, TII.get(MYISA::PUSH))
+        .addReg(Reg, RegState::Kill)
+        .setMIFlag(MachineInstr::FrameSetup);
+  }
+  return true;
+}
+
+bool MYISAFrameLowering::restoreCalleeSavedRegisters(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+    MutableArrayRef<CalleeSavedInfo> CSI,
+    const TargetRegisterInfo *) const {
+  if (CSI.empty())
+    return false;
+
+  DebugLoc DL;
+  if (MI != MBB.end())
+    DL = MI->getDebugLoc();
+  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+
+  for (const CalleeSavedInfo &Info : llvm::reverse(CSI))
+    BuildMI(MBB, MI, DL, TII.get(MYISA::POP), Info.getReg())
+        .setMIFlag(MachineInstr::FrameDestroy);
+  return true;
 }
 
 //===----------------------------------------------------------------------===//

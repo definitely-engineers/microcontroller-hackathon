@@ -183,6 +183,15 @@ def ADD_rri : Type1RRR<0x0000, "ADD",
   let arg2 = {1, imm};   // flag=1 (literal), value=imm
 }
 
+// Frame lowering must adjust reserved r2 even though it is not in GPR.
+let isCodeGenOnly = 1 in
+def ADD_sp_ri : Type1RRR<0x0000, "ADD",
+  (outs SP:$rd), (ins SP:$rs1, imm5:$imm),
+  "ADD\t$rd, $rs1, #$imm", []> {
+  bits<5> imm;
+  let arg2 = {1, imm};
+}
+
 // ADD_rrr and ADD_rri above are a complete WORKED EXAMPLE showing the two
 // most important parts of an instruction definition:
 //   1. The operand lists (outs)/(ins) and the assembly template string.
@@ -212,8 +221,29 @@ def SUB_rri : Type1RRR<0x0001, "SUB",
 
 // MOV rd, rs1 — 寄存器间搬运
 // 没有 SelectionDAG 模式：由 MYISAInstrInfo.cpp 的 copyPhysReg() 直接发射
+let isCodeGenOnly = 1 in
+def SUB_sp_ri : Type1RRR<0x0001, "SUB",
+  (outs SP:$rd), (ins SP:$rs1, imm5:$imm),
+  "SUB\t$rd, $rs1, #$imm", []> {
+  bits<5> imm;
+  let arg2 = {1, imm};
+}
+
 def MOV_rr : Type1RR<0x000F, "MOV",
   (outs GPR:$rd), (ins GPR:$rs1),
+  "MOV\t$rd, $rs1", []>;
+
+// Frame lowering needs physical SP/FP copies, but r2 is intentionally not a
+// GPR. These codegen-only forms share the architectural MOV encoding while
+// keeping TableGen's operand constraints accurate.
+let isCodeGenOnly = 1 in
+def MOV_fp_sp : Type1RR<0x000F, "MOV",
+  (outs FP:$rd), (ins SP:$rs1),
+  "MOV\t$rd, $rs1", []>;
+
+let isCodeGenOnly = 1 in
+def MOV_sp_fp : Type1RR<0x000F, "MOV",
+  (outs SP:$rd), (ins FP:$rs1),
   "MOV\t$rd, $rs1", []>;
 
 // NEG rd, rs1 — 取负
@@ -262,6 +292,18 @@ let mayStore = 1 in
 def STOREB_reg : Type2Mem<0x003,
   (outs), (ins GPR:$rs, memsrc:$addr),
   "STOREB\t$rs, $addr", [(truncstorei8 GPR:$rs, addr:$addr)]>;
+
+// PUSH pre-decrements SP before storing. POP loads from the current SP and
+// post-increments it. Both update r2 as an implicit side effect.
+let Uses = [R2], Defs = [R2], mayStore = 1, hasSideEffects = 1 in
+def PUSH : Type2Stack<0x00B,
+  (outs), (ins STACKREG:$regop),
+  "PUSH\t$regop", []>;
+
+let Uses = [R2], Defs = [R2], mayLoad = 1, hasSideEffects = 1 in
+def POP : Type2Stack<0x00C,
+  (outs STACKREG:$regop), (ins),
+  "POP\t$regop", []>;
 
 // TODO: define the rest of your ALU instructions using the same pattern.
 //       Map each LLVM SelectionDAG node to one of your opcodes, for example:

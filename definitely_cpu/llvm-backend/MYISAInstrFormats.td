@@ -235,6 +235,17 @@ class Type2NoArg<bits<9> op, dag outs, dag ins, string asmstr,
   let addr = 0;
 }
 
+// Type2Stack — single-register PUSH / POP instructions. The explicit
+// register occupies [20:16]; ri and the unused address payload are zero.
+class Type2Stack<bits<9> op, dag outs, dag ins, string asmstr,
+                 list<dag> pattern>
+    : Type2Inst<op, outs, ins, asmstr, pattern> {
+  bits<5> regop;
+  let ri   = 0;
+  let reg  = regop;
+  let addr = 0;
+}
+
 // TODO: define the remaining instruction formats for your ISA. Common
 //       additional formats are:
 //         - a two-operand ALU format (unary ops: NOT/NEG/MOV/...)

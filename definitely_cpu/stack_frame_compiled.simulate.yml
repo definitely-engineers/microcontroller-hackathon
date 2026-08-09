@@ -1,0 +1,16 @@
+simulate:
+  output-dir: ./build/sim-stack-frame-compiled
+  program: ./build/compile-stack-frame/program.hex
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r2
+      value: 31744
+    - register: r8
+      value: 42
+
+  options:
+    max-cycles: 50
+    trace: false
