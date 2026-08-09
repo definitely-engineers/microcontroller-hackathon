@@ -96,6 +96,7 @@ def CC_MYISA : CallingConv<[
 //     which registers survive across a CALL instruction (so it doesn't need
 //     to spill values that live in callee-saved registers across calls).
 //===----------------------------------------------------------------------===//
-// 被调用者保存：r16-r31。和上面的参数寄存器 r8-r15 不重叠。
-def CSR_MYISA : CalleeSavedRegs<(add R16, R17, R18, R19, R20, R21, R22, R23,
+// r3 保存 CALL 写入的返回地址；非叶函数必须先保存旧 r3。
+// 其余被调用者保存寄存器为 r16-r31，和参数寄存器 r8-r15 不重叠。
+def CSR_MYISA : CalleeSavedRegs<(add R3, R16, R17, R18, R19, R20, R21, R22, R23,
                                      R24, R25, R26, R27, R28, R29, R30, R31)>;

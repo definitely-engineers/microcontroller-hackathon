@@ -155,3 +155,20 @@ def CREG : RegisterClass<"MYISA", [i32], 32, (add R5)>;
 def SP : RegisterClass<"MYISA", [i32], 32, (add R2)> {
   let isAllocatable = 0;
 }
+
+// FP: physical frame-pointer operand class. R30 remains allocatable through
+// GPR in functions that do not need a frame pointer; this class is used only
+// by codegen-only instructions emitted by frame lowering.
+def FP : RegisterClass<"MYISA", [i32], 32, (add R30)> {
+  let isAllocatable = 0;
+}
+
+// STACKREG: registers that the architectural PUSH/POP instructions may save.
+// It includes the link register r3 in addition to the ordinary GPRs. Keeping
+// this class non-allocatable prevents it from changing register allocation.
+def STACKREG : RegisterClass<"MYISA", [i32], 32,
+  (add R3, R8, R9, R10, R11, R12, R13, R14, R15,
+       R16, R17, R18, R19, R20, R21, R22, R23,
+       R24, R25, R26, R27, R28, R29, R30, R31)> {
+  let isAllocatable = 0;
+}
