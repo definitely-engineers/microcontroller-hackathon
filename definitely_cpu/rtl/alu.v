@@ -12,6 +12,14 @@ module alu (
         case (op)
             `OP_ADD: result = a + b;
             `OP_SUB: result = a - b;
+            `OP_CMP: begin
+                if ($signed(a) < $signed(b))
+                    result = {`DATA_WIDTH{1'b1}};
+                else if ($signed(a) > $signed(b))
+                    result = {{(`DATA_WIDTH-1){1'b0}}, 1'b1};
+                else
+                    result = {`DATA_WIDTH{1'b0}};
+            end
             `OP_MOV: result = a;
             default: result = {`DATA_WIDTH{1'b0}};
         endcase

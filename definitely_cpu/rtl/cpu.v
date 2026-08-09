@@ -17,9 +17,17 @@ module cpu (
     wire [`REG_ADDR_W-1:0] arg2;
     wire [`REG_ADDR_W-1:0] dest;
     wire is_add;
+    wire is_cmp;
     wire is_li;
     wire is_jmp;
     wire jump_is_absolute;
+    wire is_jz;
+    wire is_jnz;
+    wire is_jlt;
+    wire is_jgt;
+    wire is_cond_branch;
+    wire branch_is_absolute;
+    wire branch_taken;
     wire is_call;
     wire call_is_absolute;
     wire is_ret;
@@ -48,6 +56,7 @@ module cpu (
     wire [`DATA_MSB:0] wb_data;
     wire [`ADDR_MSB:0] relative_jump_target;
     wire [`ADDR_MSB:0] jump_target;
+    wire [`ADDR_MSB:0] conditional_branch_target;
     wire [`ADDR_MSB:0] call_target;
     wire [`ADDR_MSB:0] return_address;
     wire is_memory;
@@ -64,10 +73,13 @@ module cpu (
     assign rf_write_addr = is_call ? `REG_ADDR_W'd3 : dest;
     assign is_memory = is_load || is_store || is_loadb || is_storeb;
     assign is_memory_store = is_store || is_storeb;
+    assign is_cond_branch = is_jz || is_jnz || is_jlt || is_jgt;
     assign rf_read_addr_a = is_ret
                           ? `REG_ADDR_W'd3
-                          : ((is_memory && !memory_is_absolute)
-                             ? memory_base : arg1);
+                          : (is_cond_branch
+                             ? `REG_ADDR_W'd5
+                             : ((is_memory && !memory_is_absolute)
+                                ? memory_base : arg1));
     assign rf_read_addr_b = is_memory_store ? memory_reg : arg2;
     assign return_address = pc + 1'b1;
     assign rf_write_data = is_call
@@ -77,6 +89,8 @@ module cpu (
     // therefore implements the ISA's signed PC-relative offset modulo 2^16.
     assign relative_jump_target = pc + immediate16;
     assign jump_target = jump_is_absolute ? immediate16 : relative_jump_target;
+    assign conditional_branch_target = branch_is_absolute
+                                     ? immediate16 : relative_jump_target;
     assign call_target = call_is_absolute ? immediate16 : relative_jump_target;
     assign signed_memory_offset = {{(`DATA_WIDTH-11){memory_offset11[10]}},
                                    memory_offset11};
@@ -84,6 +98,11 @@ module cpu (
                                     ? {{(`DATA_WIDTH-16){1'b0}}, immediate16}
                                     : rf_a + signed_memory_offset;
     assign dmem_addr = memory_effective_address[`ADDR_MSB:0];
+    assign branch_taken = (is_jz  && (rf_a == {`DATA_WIDTH{1'b0}}))
+                       || (is_jnz && (rf_a != {`DATA_WIDTH{1'b0}}))
+                       || (is_jlt && rf_a[`DATA_MSB])
+                       || (is_jgt && !rf_a[`DATA_MSB]
+                                  && (rf_a != {`DATA_WIDTH{1'b0}}));
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -96,6 +115,8 @@ module cpu (
             pc <= call_target;
         else if (is_jmp)
             pc <= jump_target;
+        else if (is_cond_branch && branch_taken)
+            pc <= conditional_branch_target;
         else
             pc <= pc + 1'b1;
     end
@@ -115,9 +136,15 @@ module cpu (
         .arg2(arg2),
         .dest(dest),
         .is_add(is_add),
+        .is_cmp(is_cmp),
         .is_li(is_li),
         .is_jmp(is_jmp),
         .jump_is_absolute(jump_is_absolute),
+        .is_jz(is_jz),
+        .is_jnz(is_jnz),
+        .is_jlt(is_jlt),
+        .is_jgt(is_jgt),
+        .branch_is_absolute(branch_is_absolute),
         .is_call(is_call),
         .call_is_absolute(call_is_absolute),
         .is_ret(is_ret),
@@ -173,3 +200,4 @@ module cpu (
                          ? {{(`DATA_WIDTH-16){1'b0}}, immediate16}
                          : alu_result));
 endmodule
+

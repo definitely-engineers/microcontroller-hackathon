@@ -152,6 +152,10 @@ def assemble_line(line, pc, labels):
         else:
             # Binary: MNEMONIC rd, rs1, rs2/#imm
             rd = parse_reg(tokens[1])
+            if mnemonic == 'CMP' and rd != 5:
+                raise ValueError(
+                    "CMP must write its comparison result to r5; "
+                    "use: CMP r5, left, right")
             arg1_str = tokens[2]
             arg2_str = tokens[3]
 
