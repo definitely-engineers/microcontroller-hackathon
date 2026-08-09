@@ -1,0 +1,24 @@
+simulate:
+  output-dir: ./build/sim-push-pop
+  program: ./tests/test_push_pop.asm
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r2
+      value: 31744
+    - register: r8
+      value: 0
+    - register: r9
+      value: 0
+    - register: r10
+      value: 8738
+    - register: r11
+      value: 4369
+
+  options:
+    max-cycles: 20
+    trace: false
+
+  assembler: ./tools/asm.py
