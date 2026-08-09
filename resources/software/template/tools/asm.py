@@ -229,7 +229,17 @@ def assemble_line(line, pc, labels):
                     # Normalise LLVM-style '+-N' → '-N'
                     offset_str = re.sub(r'^\+-', '-', offset_str)
                     offset = int(offset_str) if offset_str else 0
-                    return encode_type2(opcode9, 0, reg, offset & TYPE2_ADDR_MASK)
+                    # Register-indirect memory payload:
+                    #   addr[15:11] = base register
+                    #   addr[10:0]  = signed byte offset (two's complement)
+                    # The previous template discarded base_reg and silently
+                    # encoded every compiler-generated stack access as [r0].
+                    if not (-1024 <= offset <= 1023):
+                        raise ValueError(
+                            f"Memory offset {offset} out of range "
+                            "(must be -1024..1023)")
+                    payload = ((base_reg & 0x1F) << 11) | (offset & 0x7FF)
+                    return encode_type2(opcode9, 0, reg, payload)
             # Absolute: [#addr], [addr], [label]
             if mem_str.startswith('#'):
                 addr16 = parse_imm(mem_str)

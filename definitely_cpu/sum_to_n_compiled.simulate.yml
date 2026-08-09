@@ -1,0 +1,18 @@
+simulate:
+  output-dir: ./build/sim-sum-to-n-compiled
+  program: ./build/compile-sum-to-n/program.hex
+
+  rtl:
+    dir: ./rtl
+
+  verify:
+    - register: r2
+      value: 31744
+    - register: r8
+      value: 55
+
+  options:
+    max-cycles: 250
+    trace: false
+
+  assembler: ./tools/asm.py

@@ -62,9 +62,11 @@
 #include "MYISAISelLowering.h"
 #include "MYISASubtarget.h"
 #include "MYISATargetMachine.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include <utility>
 
@@ -135,6 +137,232 @@ void MYISADAGToDAGISel::Select(SDNode *N) {
   switch (N->getOpcode()) {
   default:
     break;  // Fall through to SelectCode() for TableGen pattern matching
+
+  case ISD::ADD: {
+    // LLVM canonicalises subtraction by a constant into addition of a
+    // negative constant in several common cases (including recursion's
+    // `value - 1`).  MYISA immediates are unsigned, so select a small
+    // negative RHS as the equivalent SUB-immediate instruction.
+    SDValue LHS = N->getOperand(0);
+    SDValue RHS = N->getOperand(1);
+    if (!isa<ConstantSDNode>(RHS) && isa<ConstantSDNode>(LHS))
+      std::swap(LHS, RHS);
+
+    if (const auto *CN = dyn_cast<ConstantSDNode>(RHS)) {
+      const int64_t Value = CN->getSExtValue();
+      if (Value < 0 && Value >= -31) {
+        SDLoc DL(N);
+        SDValue Magnitude =
+            CurDAG->getTargetConstant(-Value, DL, MVT::i32);
+        SDValue Ops[] = {LHS, Magnitude};
+        ReplaceNode(N, CurDAG->getMachineNode(MYISA::SUB_rri, DL,
+                                               MVT::i32, Ops));
+        return;
+      }
+    }
+    break;
+  }
+
+  case ISD::Constant: {
+    // Select constants explicitly.  Leaving non-negative values to the
+    // generated matcher can turn a PHI's zero value into an invalid
+    // `LI rd, #rd` after register allocation/rematerialisation.  A target
+    // constant keeps LI's source operand an immediate all the way to MC.
+    const int64_t Value = cast<ConstantSDNode>(N)->getSExtValue();
+    SDLoc DL(N);
+
+    if (Value >= 0 && Value <= 65535) {
+      SDValue Imm = CurDAG->getTargetConstant(Value, DL, MVT::i32);
+      ReplaceNode(N,
+                  CurDAG->getMachineNode(MYISA::LI, DL, MVT::i32, Imm));
+      return;
+    }
+
+    if (Value >= 0)
+      report_fatal_error("MYISA cannot materialise this positive constant");
+
+    const int64_t Magnitude = -Value;
+    if (Magnitude > 65535)
+      report_fatal_error("MYISA cannot materialise this negative constant");
+
+    SDValue Imm = CurDAG->getTargetConstant(Magnitude, DL, MVT::i32);
+    SDNode *Positive =
+        CurDAG->getMachineNode(MYISA::LI, DL, MVT::i32, Imm);
+    SDValue PosValue(Positive, 0);
+    ReplaceNode(N, CurDAG->getMachineNode(MYISA::NEG_rr, DL, MVT::i32,
+                                           PosValue));
+    return;
+  }
+
+  case ISD::LOAD: {
+    // Select memory operations explicitly instead of relying on the generated
+    // ComplexPattern matcher.  A composite memsrc expands to two machine
+    // operands (base, offset); keeping that expansion here prevents the load
+    // result operand from being confused with either address component.
+    auto *LD = cast<LoadSDNode>(N);
+    SDLoc DL(N);
+    SDValue Base;
+    SDValue Offset;
+    if (!SelectAddr(LD->getBasePtr(), Base, Offset))
+      report_fatal_error("Unable to select MYISA load address");
+
+    unsigned Opcode = MYISA::LOAD_reg;
+    if (LD->getMemoryVT() == MVT::i8) {
+      if (LD->getExtensionType() != ISD::ZEXTLOAD)
+        report_fatal_error("MYISA only supports zero-extending byte loads");
+      Opcode = MYISA::LOADB_reg;
+    } else if (LD->getMemoryVT() != MVT::i32 ||
+               LD->getExtensionType() != ISD::NON_EXTLOAD) {
+      report_fatal_error("Unsupported MYISA load type");
+    }
+
+    SDValue Ops[] = {Base, Offset, LD->getChain()};
+    SDVTList VTs = CurDAG->getVTList(LD->getValueType(0), MVT::Other);
+    SDNode *Result = CurDAG->getMachineNode(Opcode, DL, VTs, Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
+                           {LD->getMemOperand()});
+    ReplaceNode(N, Result);
+    return;
+  }
+
+  case ISD::STORE: {
+    // Mirror the explicit load selection above.  Operand order is deliberately
+    // value, base, offset, chain, matching STORE_reg/STOREB_reg exactly.
+    auto *ST = cast<StoreSDNode>(N);
+    SDLoc DL(N);
+    SDValue Base;
+    SDValue Offset;
+    if (!SelectAddr(ST->getBasePtr(), Base, Offset))
+      report_fatal_error("Unable to select MYISA store address");
+
+    unsigned Opcode;
+    if (ST->getMemoryVT() == MVT::i8)
+      Opcode = MYISA::STOREB_reg;
+    else if (ST->getMemoryVT() == MVT::i32)
+      Opcode = MYISA::STORE_reg;
+    else
+      report_fatal_error("Unsupported MYISA store type");
+
+    SDValue Ops[] = {ST->getValue(), Base, Offset, ST->getChain()};
+    SDNode *Result =
+        CurDAG->getMachineNode(Opcode, DL, MVT::Other, Ops);
+    CurDAG->setNodeMemRefs(cast<MachineSDNode>(Result),
+                           {ST->getMemOperand()});
+    ReplaceNode(N, Result);
+    return;
+  }
+
+  case ISD::CALLSEQ_START:
+  case ISD::CALLSEQ_END: {
+    SDLoc DL(N);
+    const bool IsStart = N->getOpcode() == ISD::CALLSEQ_START;
+    const unsigned Opcode = IsStart ? MYISA::ADJCALLSTACKDOWN
+                                    : MYISA::ADJCALLSTACKUP;
+
+    // Generic call-sequence nodes place the chain first.  Machine pseudos
+    // instead expect their two explicit size operands first, followed by the
+    // chain and (for CALLSEQ_END) optional glue.
+    SmallVector<SDValue, 5> Ops;
+    for (unsigned I = 1; I < 3; ++I) {
+      const auto *Amount = cast<ConstantSDNode>(N->getOperand(I));
+      Ops.push_back(CurDAG->getTargetConstant(Amount->getZExtValue(), DL,
+                                              MVT::i32));
+    }
+    Ops.push_back(N->getOperand(0));
+    if (!IsStart && N->getNumOperands() > 3)
+      Ops.push_back(N->getOperand(3));
+
+    SDVTList VTs = CurDAG->getVTList(MVT::Other, MVT::Glue);
+    ReplaceNode(N, CurDAG->getMachineNode(Opcode, DL, VTs, Ops));
+    return;
+  }
+
+  case MYISAISD::CALL: {
+    SDLoc DL(N);
+    SDValue Chain = N->getOperand(0);
+    SmallVector<SDValue, 12> Ops;
+    SDValue Glue;
+
+    // The fixed machine operand is the target.  Register arguments and the
+    // register mask follow as variadic operands; chain and glue must be last.
+    Ops.push_back(N->getOperand(1));
+    for (unsigned I = 2; I < N->getNumOperands(); ++I) {
+      SDValue Op = N->getOperand(I);
+      if (Op.getValueType() == MVT::Glue)
+        Glue = Op;
+      else
+        Ops.push_back(Op);
+    }
+    Ops.push_back(Chain);
+    if (Glue)
+      Ops.push_back(Glue);
+
+    SDVTList VTs = CurDAG->getVTList(MVT::Other, MVT::Glue);
+    ReplaceNode(N, CurDAG->getMachineNode(MYISA::CALL, DL, VTs, Ops));
+    return;
+  }
+
+  case MYISAISD::CMP: {
+    SDLoc DL(N);
+    SDValue Chain = N->getOperand(0);
+    SDValue LHS = N->getOperand(1);
+    SDValue RHS = N->getOperand(2);
+    unsigned Opcode = MYISA::CMP_rr;
+
+    if (const auto *CN = dyn_cast<ConstantSDNode>(RHS)) {
+      uint64_t Imm = CN->getZExtValue();
+      if (Imm <= 31) {
+        Opcode = MYISA::CMP_ri;
+        RHS = CurDAG->getTargetConstant(Imm, DL, MVT::i32);
+      }
+    }
+
+    SDVTList VTs = CurDAG->getVTList(MVT::Other, MVT::Glue);
+    SDValue Ops[] = {LHS, RHS, Chain};
+    ReplaceNode(N, CurDAG->getMachineNode(Opcode, DL, VTs, Ops));
+    return;
+  }
+
+  case MYISAISD::BR_CC: {
+    SDLoc DL(N);
+    SDValue Chain = N->getOperand(0);
+    ISD::CondCode CC = cast<CondCodeSDNode>(N->getOperand(1))->get();
+    SDValue Target = N->getOperand(2);
+    SDValue Glue = N->getOperand(3);
+
+    auto EmitBranch = [&](unsigned Opcode, SDValue InputChain,
+                          SDValue InputGlue) -> SDNode * {
+      SmallVector<SDValue, 3> Ops{Target, InputChain};
+      if (InputGlue)
+        Ops.push_back(InputGlue);
+      return CurDAG->getMachineNode(Opcode, DL, MVT::Other, Ops);
+    };
+
+    unsigned PrimaryOpcode;
+    bool AlsoEqual = false;
+    switch (CC) {
+    case ISD::SETEQ: PrimaryOpcode = MYISA::JZ; break;
+    case ISD::SETNE: PrimaryOpcode = MYISA::JNZ; break;
+    case ISD::SETLT: PrimaryOpcode = MYISA::JLT; break;
+    case ISD::SETGT: PrimaryOpcode = MYISA::JGT; break;
+    case ISD::SETLE: PrimaryOpcode = MYISA::JLT; AlsoEqual = true; break;
+    case ISD::SETGE: PrimaryOpcode = MYISA::JGT; AlsoEqual = true; break;
+    default:
+      report_fatal_error("Unexpected MYISA conditional branch code");
+    }
+
+    SDNode *Primary = EmitBranch(PrimaryOpcode, Chain, Glue);
+    if (!AlsoEqual) {
+      ReplaceNode(N, Primary);
+      return;
+    }
+
+    // a <= b  => JLT target; JZ target
+    // a >= b  => JGT target; JZ target
+    SDNode *Equal = EmitBranch(MYISA::JZ, SDValue(Primary, 0), SDValue());
+    ReplaceNode(N, Equal);
+    return;
+  }
 
   // TODO: handle the DAG nodes that need custom C++ selection (i.e. anything
   //       that cannot be expressed as a simple TableGen pattern in the .td).

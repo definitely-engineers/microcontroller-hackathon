@@ -175,9 +175,20 @@ def find_llvm_tool(name, llvm_install):
     die(f"'{name}' not found — set LLVM_INSTALL or add it to PATH")
 
 
-def find_assembler(assembler_override):
+def find_assembler(assembler_override, project_dir=None):
     if assembler_override and os.path.isfile(assembler_override):
         return assembler_override
+
+    # A CPU project may customise the template assembler to match its final
+    # ISA encoding.  Prefer that project-local implementation over the generic
+    # workbook template.  In particular, the Definitely CPU memory format uses
+    # addr[15:11] for the base register in register-indirect mode.
+    if project_dir:
+        project_assembler = os.path.normpath(os.path.join(
+            project_dir, "tools", "asm.py"))
+        if os.path.isfile(project_assembler):
+            return project_assembler
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     default    = os.path.normpath(os.path.join(
         script_dir, "..", "template", "tools", "asm.py"))
@@ -301,7 +312,8 @@ def main():
     clang      = find_llvm_tool("clang",      llvm_install)
     llc        = find_llvm_tool("llc",        llvm_install)
     llvm_link  = find_llvm_tool("llvm-link",  llvm_install)
-    assembler  = find_assembler(cfg["assembler"])
+    config_dir = os.path.dirname(os.path.abspath(args.config))
+    assembler  = find_assembler(cfg["assembler"], config_dir)
 
     # Separate C and ASM sources
     c_sources   = [s for s in sources if s.lower().endswith(".c")]
@@ -318,6 +330,15 @@ def main():
 
     build = cfg["output_dir"]
     combined_lines = []
+
+    # Never leave a previous successful image looking like the result of a
+    # failed compile.  The simulator must not be able to consume stale output.
+    final_outputs = [os.path.join(build, out_name + ".asm")]
+    if cfg["emit_hex"]:
+        final_outputs.append(os.path.join(build, out_name + ".hex"))
+    for output in final_outputs:
+        if os.path.isfile(output):
+            os.remove(output)
 
     # ---- Compile C sources ----
     if c_sources:

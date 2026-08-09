@@ -428,8 +428,8 @@ def verify_target(target_name, llvm_install, llvm_build):
     name_lower = target_name.lower()
 
     candidates = [
-        os.path.join(llvm_install, "bin", "llc"),
         os.path.join(llvm_build, "bin", "llc"),
+        os.path.join(llvm_install, "bin", "llc"),
         shutil.which("llc") or "",
     ]
 
@@ -469,6 +469,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Build a custom LLVM backend from a YAML config file.")
     parser.add_argument("config", help="Path to a .build-compiler.yml file")
+    parser.add_argument(
+        "--build-tree-only",
+        action="store_true",
+        help=("relink the build-tree llc but skip the full LLVM install; "
+              "use this for fast backend development iterations"),
+    )
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
@@ -520,7 +526,20 @@ def main():
         cmake_reconfigure(target_name, llvm_src, llvm_build, llvm_install,
                           verbose=False, link_jobs=link_jobs)
     build_target(target_name, llvm_build, jobs, verbose=False)
-    install_llvm(llvm_build, jobs, verbose=False)
+    # The component targets only rebuild the MYISA libraries.  Always relink
+    # the build-tree llc as compile configs commonly point at /llvm-build;
+    # otherwise they silently keep executing an older backend.
+    ninja = shutil.which("ninja") or die("ninja not found on PATH")
+    log(f"Relinking build-tree llc (-j{jobs})")
+    rc, out = run([ninja, "-C", llvm_build, f"-j{jobs}", "llc"],
+                  verbose=False)
+    if rc != 0:
+        die(f"llc relink failed:\n{out}")
+
+    if args.build_tree_only:
+        log("Build-tree llc ready (full install skipped)")
+    else:
+        install_llvm(llvm_build, jobs, verbose=False)
 
     if cfg["verify"]:
         verify_target(target_name, llvm_install, llvm_build)

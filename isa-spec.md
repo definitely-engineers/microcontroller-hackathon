@@ -116,7 +116,7 @@ The baseline adopts the provided MYISA worked-example register map.
 | Register | Role | Allocation status |
 |---|---|---|
 | `r0` | Hard-wired zero | Reserved |
-| `r1` | Program Counter (PC) | Reserved |
+| `r1` | Reserved for future architectural use | Reserved |
 | `r2` | Stack Pointer (SP) | Reserved |
 | `r3` | Link Register (LR) | Reserved |
 | `r4` | Thread pointer / reserved runtime register | Reserved |
@@ -131,7 +131,10 @@ The baseline adopts the provided MYISA worked-example register map.
 
 - `r0` always reads as `0`.
 - Writes to `r0` are discarded.
-- `r1` reflects the current instruction PC.
+- `r1` has no architecturally defined read value in the baseline implementation.
+  Software must not use it as a general-purpose register or rely on it containing
+  the current PC. The processor maintains the instruction PC as separate internal
+  state.
 - `r2` tracks the active stack pointer.
 - `r3` stores the return address written by `CALL`.
 - `r5` stores the result used by conditional branches.

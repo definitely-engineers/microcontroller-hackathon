@@ -72,7 +72,7 @@ class MYISAReg<bits<5> Enc, string n> : Register<n> {
 // in MYISARegisterInfo.cpp::getReservedRegs).
 
 def R0  : MYISAReg< 0, "r0">;   // Hard-wired zero: reads always return 0, writes are discarded
-def R1  : MYISAReg< 1, "r1">;   // Program counter: holds address of current instruction
+def R1  : MYISAReg< 1, "r1">;   // Reserved: no architecturally defined read value
 def R2  : MYISAReg< 2, "r2">;   // Stack pointer: points to top of stack, grows downward
 def R3  : MYISAReg< 3, "r3">;   // Link register: CALL saves return address here
 def R4  : MYISAReg< 4, "r4">;   // Thread pointer (reserved for OS/runtime use)

@@ -13,8 +13,8 @@
             "LLVM_BUILD_JOBS": "0"
         }
     },
-    // Dev Containers mounts the repo to /workspaces/<folder-name> by default
-    "workspaceFolder": "/workspaces/microcontroller-hackathon",
+    // Match Dev Containers' default /workspaces/<local-folder-name> mount.
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
     // Use the non-root 'dev' user created in the Dockerfile
     "remoteUser": "dev",
     "containerEnv": {
@@ -26,13 +26,13 @@
         "vscode": {
             "extensions": [
                 // Verilog / SystemVerilog
-                "mshr-k.veriloghdl",
+                "mshr-h.VerilogHDL",
                 // C/C++ intelligence (clangd from the container)
                 "llvm-vs-code-extensions.vscode-clangd",
                 // Python (assembler scripts, cocotb testbenches)
                 "ms-python.python",
                 // LLVM TableGen syntax highlighting
-                "klaas.llvm-tablegen",
+                "llvm-vs-code-extensions.vscode-mlir",
                 // Git
                 "eamodio.gitlens",
                 // Error lens — inline diagnostics

@@ -75,6 +75,7 @@
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
 
@@ -122,7 +123,7 @@ MYISATargetLowering::MYISATargetLowering(const TargetMachine &TM,
   setBooleanContents(ZeroOrOneBooleanContent);
 
   // ---- 控制流：Stage 2 会把这两个改成 Custom ----
-  setOperationAction(ISD::BR_CC,     MVT::i32,   Expand);
+  setOperationAction(ISD::BR_CC,     MVT::i32,   Custom);
   setOperationAction(ISD::SELECT_CC, MVT::i32,   Expand);
   setOperationAction(ISD::SELECT,    MVT::i32,   Expand);
   setOperationAction(ISD::BRCOND,    MVT::Other, Expand);
@@ -258,20 +259,38 @@ SDValue MYISATargetLowering::LowerOperation(SDValue Op,
 //===----------------------------------------------------------------------===//
 
 SDValue MYISATargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
-  // TODO: lower a generic conditional branch "if (LHS cc RHS) goto Target"
-  //       into your ISA's compare-then-branch idiom.
-  //       The operands of an ISD::BR_CC node are:
-  //         Op.getOperand(0) = chain
-  //         Op.getOperand(1) = condition code (cast<CondCodeSDNode>(...)->get())
-  //         Op.getOperand(2) = LHS,  Op.getOperand(3) = RHS
-  //         Op.getOperand(4) = target basic block
-  //       A common approach: emit a custom CMP node (e.g. MYISAISD::CMP) that
-  //       sets your condition register, then a custom branch node
-  //       (e.g. MYISAISD::BR_CC) carrying the condition code and target.
-  //       If your ISA has no less-or-equal / greater-or-equal branch, rewrite
-  //       SETLE/SETGE into SETLT/SETGT by adjusting the RHS by 1.
-  //       See the Stage 2 tutorial for a worked example.
-  return SDValue();
+  SDLoc DL(Op);
+  SDValue Chain = Op.getOperand(0);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(1))->get();
+  SDValue LHS = Op.getOperand(2);
+  SDValue RHS = Op.getOperand(3);
+  SDValue Target = Op.getOperand(4);
+
+  // The RTL condition register implements signed ordering.  Equality is
+  // equally valid for signed and unsigned values, but unsigned relational
+  // branches need extra ISA support and must not be silently miscompiled.
+  switch (CC) {
+  case ISD::SETEQ:
+  case ISD::SETNE:
+  case ISD::SETLT:
+  case ISD::SETGT:
+  case ISD::SETLE:
+  case ISD::SETGE:
+    break;
+  default:
+    report_fatal_error("MYISA does not yet support unsigned/ordered BR_CC");
+  }
+
+  // Glue keeps CMP adjacent to the branch and the chain preserves control
+  // ordering.  SETLE/SETGE are deliberately left intact: the selector emits
+  // JLT+JZ or JGT+JZ, avoiding the overflow-prone rhs +/- 1 rewrite.
+  SDVTList CmpVTs = DAG.getVTList(MVT::Other, MVT::Glue);
+  SDValue CmpOps[] = {Chain, LHS, RHS};
+  SDValue Cmp = DAG.getNode(MYISAISD::CMP, DL, CmpVTs, CmpOps);
+
+  SDValue BranchOps[] = {Cmp.getValue(0), DAG.getCondCode(CC), Target,
+                         Cmp.getValue(1)};
+  return DAG.getNode(MYISAISD::BR_CC, DL, MVT::Other, BranchOps);
 }
 
 //===----------------------------------------------------------------------===//
@@ -345,6 +364,7 @@ SDValue MYISATargetLowering::LowerFormalArguments(
     SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
 
   MachineFunction &MF = DAG.getMachineFunction();
+
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
 
   // Run the calling convention analysis to determine where each arg lives.
@@ -455,6 +475,16 @@ SDValue MYISATargetLowering::LowerCall(
 
   MachineFunction &MF = DAG.getMachineFunction();
 
+  // Direct C calls arrive as generic symbol nodes.  Mark them target-specific
+  // before instruction selection so CALL can retain the function symbol as
+  // its PC-relative assembler operand instead of trying to materialise it as
+  // an ordinary data address.
+  if (const auto *G = dyn_cast<GlobalAddressSDNode>(Callee))
+    Callee = DAG.getTargetGlobalAddress(G->getGlobal(), DL, MVT::i32,
+                                        G->getOffset());
+  else if (const auto *E = dyn_cast<ExternalSymbolSDNode>(Callee))
+    Callee = DAG.getTargetExternalSymbol(E->getSymbol(), MVT::i32);
+
   // Step 1: Analyze outgoing arguments to determine register/stack assignment.
   SmallVector<CCValAssign, 16> ArgLocs;
   CCState CCInfo(CallConv, IsVarArg, MF, ArgLocs, *DAG.getContext());
@@ -532,10 +562,11 @@ SDValue MYISATargetLowering::LowerCall(
   RVInfo.AnalyzeCallResult(Ins, RetCC_MYISA);
 
   for (auto &VA : RVLocs) {
-    Chain = DAG.getCopyFromReg(Chain, DL, VA.getLocReg(), VA.getValVT(),
-                               InGlue).getValue(1);
-    InGlue = Chain.getValue(2);
-    InVals.push_back(Chain.getValue(0));
+    SDValue RetValue = DAG.getCopyFromReg(Chain, DL, VA.getLocReg(),
+                                          VA.getValVT(), InGlue);
+    InVals.push_back(RetValue);
+    Chain = RetValue.getValue(1);
+    InGlue = RetValue.getValue(2);
   }
 
   return Chain;

@@ -235,6 +235,33 @@ class Type2NoArg<bits<9> op, dag outs, dag ins, string asmstr,
   let addr = 0;
 }
 
+// CMP has no allocatable result: architecturally it always writes the
+// dedicated condition register r5.  Keep r5 implicit at the MachineInstr
+// level while still encoding it in the Type 1 result field and printing the
+// explicit operand expected by the standalone assembler.
+class Type1CmpRR<bits<14> op, dag outs, dag ins, string asmstr,
+                 list<dag> pattern>
+    : Type1Inst<op, outs, ins, asmstr, pattern> {
+  bits<5> rs1;
+  bits<5> rs2;
+  let result    = 5;
+  let arg1{5}   = 0;
+  let arg1{4-0} = rs1;
+  let arg2{5}   = 0;
+  let arg2{4-0} = rs2;
+}
+
+class Type1CmpRI<bits<14> op, dag outs, dag ins, string asmstr,
+                 list<dag> pattern>
+    : Type1Inst<op, outs, ins, asmstr, pattern> {
+  bits<5> rs1;
+  bits<5> imm;
+  let result    = 5;
+  let arg1{5}   = 0;
+  let arg1{4-0} = rs1;
+  let arg2      = {1, imm};
+}
+
 // Type2Stack — single-register PUSH / POP instructions. The explicit
 // register occupies [20:16]; ri and the unused address payload are zero.
 class Type2Stack<bits<9> op, dag outs, dag ins, string asmstr,
@@ -244,6 +271,17 @@ class Type2Stack<bits<9> op, dag outs, dag ins, string asmstr,
   let ri   = 0;
   let reg  = regop;
   let addr = 0;
+}
+
+// PC-relative branch.  Labels are emitted as symbolic MachineBasicBlock
+// operands; tools/asm.py resolves them to the ISA's signed 16-bit offset.
+class Type2Branch<bits<9> op, dag outs, dag ins, string asmstr,
+                  list<dag> pattern>
+    : Type2Inst<op, outs, ins, asmstr, pattern> {
+  bits<16> target;
+  let ri   = 0;
+  let reg  = 0;
+  let addr = target;
 }
 
 // TODO: define the remaining instruction formats for your ISA. Common
